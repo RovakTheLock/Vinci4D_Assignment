@@ -1,0 +1,56 @@
+import numpy as np
+from enum import Enum
+
+# 1. Define the Enum
+class DimType(Enum):
+    SCALAR = 0
+    VECTOR = 1
+
+class FieldNames(Enum):
+    PRESSURE = "pressure"
+    GRAD_PRESSURE = "grad_pressure"
+    VELOCITY = "velocity"
+    FACE_FLUX = "face_flux"
+
+class FieldArray:
+    """
+    Creates a field array based on type enum type SCALAR (pressure) or VECTOR (velocity)
+    """
+    
+    def __init__(self, name, fieldType, num_points):
+        """
+        Initialize field with name and type of field
+        
+        Args:
+            name (str): Name of the field
+            fieldType (DimType): Type of the field (SCALAR or VECTOR)
+        """
+        
+        self.name_ = name
+        self.fieldType_ = fieldType
+        self.numComponents_ = 1 if fieldType == DimType.SCALAR else 2  # Assuming 2D vector fields for VECTOR type
+        self.data_ = np.zeros(num_points * self.numComponents_)
+
+    def get_name(self):
+        """Get the name of the field"""
+        return self.name_
+    
+    def get_type(self):
+        """Get the type of the field as a string ('Scalar' or 'Vector')"""
+        return "Scalar" if self.fieldType_ == DimType.SCALAR else "Vector"
+    
+    def get_num_components(self):
+        """Get the number of components in the field (1 for scalar, 2 for vector)"""
+        return self.numComponents_
+    
+    def get_data(self):
+        """Get the underlying data array"""
+        return self.data_
+    
+    def initialize_constant(self,value):
+        """Initialize the field data with a constant value"""
+        self.data_.fill(value)
+    
+    def __repr__(self):
+        return f"FieldArray(name='{self.name_}', type='{self.get_type()}', num_components={self.numComponents_})"
+    
