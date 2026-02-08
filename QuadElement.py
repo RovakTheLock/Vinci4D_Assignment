@@ -58,6 +58,7 @@ class Face:
             f"left={self.leftCellFlatId_}, "
             f"right={self.rightCellFlatId_}, "
             f"coords={self.faceCoords_}, "
+            f"normal={self.normalVector_}, "
             f"boundary={self.isBoundary_})"
         )
 
