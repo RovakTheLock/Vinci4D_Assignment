@@ -5,7 +5,7 @@ import yaml
 import numpy as np
 from YamlParser import InputConfigParser
 from MeshObject import MeshObject
-from QuadElement import Face
+from QuadElement import Face, Cell
 
 
 class TestMeshObject(unittest.TestCase):
@@ -34,15 +34,22 @@ class TestMeshObject(unittest.TestCase):
 		mesh = MeshObject(parser)
 		mesh.generate_grid()
 
-		cells_x, cells_y = mesh.get_cell_centers()
+		cells = mesh.get_cells()
+		nx = parser.numCellsX_
+		ny = parser.numCellsY_
 
 		# Expect centers at 1/6, 1/2, 5/6 for range [0,1] with 3 cells
 		expected = np.array([1.0/6.0, 0.5, 5.0/6.0])
 
-		self.assertEqual(cells_x.shape[0], 3)
-		self.assertEqual(cells_y.shape[0], 3)
-		np.testing.assert_allclose(cells_x, expected, rtol=1e-7, atol=1e-9)
-		np.testing.assert_allclose(cells_y, expected, rtol=1e-7, atol=1e-9)
+		# extract x centers from first row (j=0)
+		x_centers = np.array([cells[i].get_centroid()[0] for i in range(nx)])
+		# extract y centers from first column (i=0) across rows
+		y_centers = np.array([cells[j * nx].get_centroid()[1] for j in range(ny)])
+
+		self.assertEqual(x_centers.shape[0], 3)
+		self.assertEqual(y_centers.shape[0], 3)
+		np.testing.assert_allclose(x_centers, expected, rtol=1e-7, atol=1e-9)
+		np.testing.assert_allclose(y_centers, expected, rtol=1e-7, atol=1e-9)
 
 	def test_4x8_unit_square_coords_and_centers(self):
 		cfg = {
@@ -63,7 +70,9 @@ class TestMeshObject(unittest.TestCase):
 
 		x_nodes = mesh.get_x_coordinates()
 		y_nodes = mesh.get_y_coordinates()
-		cells_x, cells_y = mesh.get_cell_centers()
+		cells = mesh.get_cells()
+		nx = parser.numCellsX_
+		ny = parser.numCellsY_
 
 		# Expected node coordinates
 		expected_x_nodes = np.linspace(0.0, 1.0, 4 + 1)  # 5 nodes: 0,0.25,0.5,0.75,1
@@ -73,15 +82,20 @@ class TestMeshObject(unittest.TestCase):
 		expected_x_centers = (expected_x_nodes[:-1] + expected_x_nodes[1:]) / 2
 		expected_y_centers = (expected_y_nodes[:-1] + expected_y_nodes[1:]) / 2
 
+		# extract x centers from first row (j=0)
+		x_centers = np.array([cells[i].get_centroid()[0] for i in range(nx)])
+		# extract y centers from first column (i=0) across rows
+		y_centers = np.array([cells[j * nx].get_centroid()[1] for j in range(ny)])
+
 		self.assertEqual(x_nodes.shape[0], expected_x_nodes.shape[0])
 		self.assertEqual(y_nodes.shape[0], expected_y_nodes.shape[0])
-		self.assertEqual(cells_x.shape[0], expected_x_centers.shape[0])
-		self.assertEqual(cells_y.shape[0], expected_y_centers.shape[0])
+		self.assertEqual(x_centers.shape[0], expected_x_centers.shape[0])
+		self.assertEqual(y_centers.shape[0], expected_y_centers.shape[0])
 
 		np.testing.assert_allclose(x_nodes, expected_x_nodes, rtol=1e-12, atol=1e-12)
 		np.testing.assert_allclose(y_nodes, expected_y_nodes, rtol=1e-12, atol=1e-12)
-		np.testing.assert_allclose(cells_x, expected_x_centers, rtol=1e-12, atol=1e-12)
-		np.testing.assert_allclose(cells_y, expected_y_centers, rtol=1e-12, atol=1e-12)
+		np.testing.assert_allclose(x_centers, expected_x_centers, rtol=1e-12, atol=1e-12)
+		np.testing.assert_allclose(y_centers, expected_y_centers, rtol=1e-12, atol=1e-12)
 
 	def test_3x6_faces(self):
 		cfg = {
@@ -123,8 +137,13 @@ class TestMeshObject(unittest.TestCase):
 
 		# Check internal faces have both left and right; boundary faces have right None
 		for f in internal:
-			self.assertIsNotNone(f.get_left_cell())
-			self.assertIsNotNone(f.get_right_cell())
+			left = f.get_left_cell()
+			right = f.get_right_cell()
+			# should be integers (flattened ids) within valid range
+			self.assertIsInstance(left, int)
+			self.assertIsInstance(right, int)
+			self.assertTrue(0 <= left < (nx * ny))
+			self.assertTrue(0 <= right < (nx * ny))
 			n = f.get_normal_vector()
 			area = f.get_area()
 			if abs(n[0]) > 0:
@@ -133,8 +152,12 @@ class TestMeshObject(unittest.TestCase):
 				self.assertTrue(np.isclose(area, dx))
 
 		for f in boundary:
-			self.assertIsNotNone(f.get_left_cell())
-			self.assertIsNone(f.get_right_cell())
+			left = f.get_left_cell()
+			right = f.get_right_cell()
+			# left should be flattened int, right should be None
+			self.assertIsInstance(left, int)
+			self.assertIsNone(right)
+			self.assertTrue(0 <= left < (nx * ny))
 			n = f.get_normal_vector()
 			area = f.get_area()
 			if abs(n[0]) > 0:
@@ -157,9 +180,45 @@ class TestMeshObject(unittest.TestCase):
 				else:
 					self.assertTrue(np.isclose(fc[1], y_max))
 
+	def test_10x15_cell_numbering(self):
+		# 10x15 unit-square mesh: verify flattened and (i,j) numbering
+		cfg = {
+			'mesh_parameters': {
+				'x_range': [0, 1],
+				'y_range': [0, 1],
+				'num_cells_x': 10,
+				'num_cells_y': 15
+			}
+		}
+		path = os.path.join(self.tmpdir, 'mesh_10x15.yaml')
+		with open(path, 'w') as f:
+			yaml.safe_dump(cfg, f)
+
+		parser = InputConfigParser(path)
+		mesh = MeshObject(parser)
+		mesh.generate_grid()
+
+		cells = mesh.get_cells()
+		nx = parser.numCellsX_
+		ny = parser.numCellsY_
+
+		self.assertEqual(len(cells), nx * ny)
+
+		# Verify every cell's flattened id and indices mapping (row-major)
+		for j in range(ny):
+			for i in range(nx):
+				flat = j * nx + i
+				cell = cells[flat]
+				self.assertEqual(cell.get_flat_id(), flat)
+				self.assertEqual(cell.get_indices(), (i, j))
+				# also basic type checks
+				self.assertIsInstance(cell.get_flat_id(), int)
+				self.assertIsInstance(cell.get_volume(), float)
+
 
 
 if __name__ == '__main__':
 	unittest.main()
+
 
 

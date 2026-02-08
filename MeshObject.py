@@ -22,11 +22,10 @@ class MeshObject:
         self.config_parser_ = config_parser
         self.xCoords_ = None
         self.yCoordS_ = None
-        self.cellsX_ = None
-        self.cellsY_ = None
         self.faces_ = None
         self.internalFaces_ = None
         self.boundaryFaces_ = None
+        self.cells_ = None
         self.generate_faces()
         self.generate_grid()
     
@@ -58,9 +57,19 @@ class MeshObject:
         self.xCoords_ = np.linspace(x_min, x_max, num_cells_x + 1)
         self.yCoordS_ = np.linspace(y_min, y_max, num_cells_y + 1)
         
-        # Generate cell centers
-        self.cellsX_ = (self.xCoords_[:-1] + self.xCoords_[1:]) / 2
-        self.cellsY_ = (self.yCoordS_[:-1] + self.yCoordS_[1:]) / 2
+        # Compute cell centers and create Cell objects
+        cellsX_centers = (self.xCoords_[:-1] + self.xCoords_[1:]) / 2
+        cellsY_centers = (self.yCoordS_[:-1] + self.yCoordS_[1:]) / 2
+        dx = self.xCoords_[1] - self.xCoords_[0]
+        dy = self.yCoordS_[1] - self.yCoordS_[0]
+        cell_volume = dx * dy
+        self.cells_ = []
+        for j in range(num_cells_y):
+            for i in range(num_cells_x):
+                flat_id = j * num_cells_x + i
+                centroid = (float(cellsX_centers[i]), float(cellsY_centers[j]))
+                cell = QE.Cell(flat_id, cell_volume, indices=(i, j), centroid=centroid)
+                self.cells_.append(cell)
         
         print(f"Grid generated: {num_cells_x} x {num_cells_y} cells")
     
@@ -76,29 +85,32 @@ class MeshObject:
             self.generate_grid()
         return self.yCoordS_
     
-    def get_cell_centers(self):
-        """
-        Get the cell center coordinates.
-        
-        Returns:
-            tuple: (cells_x, cells_y) - 1D arrays of cell center coordinates
-        """
-        if self.cellsX_ is None or self.cellsY_ is None:
-            self.generate_grid()
-        return self.cellsX_, self.cellsY_
-    
     def get_cell_count(self):
         """Get the number of cells in x and y"""
         num_cells_x = self.config_parser_.numCellsX_
         num_cells_y = self.config_parser_.numCellsY_
         return num_cells_x, num_cells_y
+
+    def get_cells(self):
+        """Return list of Cell objects (row-major order)"""
+        if self.cells_ is None:
+            self.generate_grid()
+        return self.cells_
+
+    def get_cell_by_flat_id(self, flat_id):
+        """Return Cell by flattened id or None if out of range"""
+        if self.cells_ is None:
+            self.generate_grid()
+        if 0 <= flat_id < len(self.cells_):
+            return self.cells_[flat_id]
+        return None
     
     def generate_faces(self):
         """
         Generate all faces (internal and boundary) for the mesh.
         Internal faces connect two cells, boundary faces have only a left cell.
         """
-        if self.cellsX_ is None or self.cellsY_ is None:
+        if self.cells_ is None:
             self.generate_grid()
         
         num_cells_x = self.config_parser_.numCellsX_
@@ -117,12 +129,18 @@ class MeshObject:
         for i in range(num_cells_x + 1):
             for j in range(num_cells_y):
                 x_coord = self.xCoords_[i]
-                y_coord = (self.cellsY_[j-1] + self.cellsY_[j]) / 2 if j > 0 else self.cellsY_[j]
+                # Face center y: use centroid y of the left cell (or available adjacent cell)
+                if 0 < i < num_cells_x:
+                    left_flat = j * num_cells_x + (i - 1)
+                else:
+                    left_flat = j * num_cells_x + 0
+                y_coord = self.get_cell_by_flat_id(left_flat).get_centroid()[1]
                 
                 # Interior vertical faces
                 if 0 < i < num_cells_x:
-                    left_cell = (i - 1, j)
-                    right_cell = (i, j)
+                    # flattened ids: flat = j * num_cells_x + i
+                    left_cell = j * num_cells_x + (i - 1)
+                    right_cell = j * num_cells_x + i
                     normal = (1.0, 0.0)  # Pointing right
                     face = QE.Face(face_id, left_cell, right_cell, (x_coord, y_coord), normal)
                     face.set_area(dy)
@@ -132,7 +150,7 @@ class MeshObject:
                 
                 # Left boundary faces
                 elif i == 0:
-                    left_cell = (0, j)
+                    left_cell = j * num_cells_x + 0
                     normal = (-1.0, 0.0)  # Pointing left (outward)
                     face = QE.Face(face_id, left_cell, None, (x_coord, y_coord), normal)
                     face.set_area(dy)
@@ -142,7 +160,7 @@ class MeshObject:
                 
                 # Right boundary faces
                 elif i == num_cells_x:
-                    left_cell = (num_cells_x - 1, j)
+                    left_cell = j * num_cells_x + (num_cells_x - 1)
                     normal = (1.0, 0.0)  # Pointing right (outward)
                     face = QE.Face(face_id, left_cell, None, (x_coord, y_coord), normal)
                     face.set_area(dy)
@@ -153,13 +171,21 @@ class MeshObject:
         # Horizontal faces (separating cells in y-direction)
         for i in range(num_cells_x):
             for j in range(num_cells_y + 1):
-                x_coord = (self.cellsX_[i-1] + self.cellsX_[i]) / 2 if i > 0 else self.cellsX_[i]
+                # Face center x: use centroid x averaged between neighboring cells when available
+                if 0 < j < num_cells_y:
+                    left_flat = (j - 1) * num_cells_x + i
+                    right_flat = j * num_cells_x + i
+                    x_coord = 0.5 * (self.get_cell_by_flat_id(left_flat).get_centroid()[0]
+                                     + self.get_cell_by_flat_id(right_flat).get_centroid()[0])
+                else:
+                    flat = (0 if j == 0 else (num_cells_y - 1)) * num_cells_x + i
+                    x_coord = self.get_cell_by_flat_id(flat).get_centroid()[0]
                 y_coord = self.yCoordS_[j]
                 
                 # Interior horizontal faces
                 if 0 < j < num_cells_y:
-                    left_cell = (i, j - 1)
-                    right_cell = (i, j)
+                    left_cell = (j - 1) * num_cells_x + i
+                    right_cell = j * num_cells_x + i
                     normal = (0.0, 1.0)  # Pointing up
                     face = QE.Face(face_id, left_cell, right_cell, (x_coord, y_coord), normal)
                     face.set_area(dx)
@@ -169,7 +195,7 @@ class MeshObject:
                 
                 # Bottom boundary faces
                 elif j == 0:
-                    left_cell = (i, 0)
+                    left_cell = 0 * num_cells_x + i
                     normal = (0.0, -1.0)  # Pointing down (outward)
                     face = QE.Face(face_id, left_cell, None, (x_coord, y_coord), normal)
                     face.set_area(dx)
@@ -179,7 +205,7 @@ class MeshObject:
                 
                 # Top boundary faces
                 elif j == num_cells_y:
-                    left_cell = (i, num_cells_y - 1)
+                    left_cell = (num_cells_y - 1) * num_cells_x + i
                     normal = (0.0, 1.0)  # Pointing up (outward)
                     face = QE.Face(face_id, left_cell, None, (x_coord, y_coord), normal)
                     face.set_area(dx)
