@@ -215,6 +215,70 @@ class TestMeshObject(unittest.TestCase):
 				self.assertIsInstance(cell.get_flat_id(), int)
 				self.assertIsInstance(cell.get_volume(), float)
 
+	def test_5x5_interior_cells(self):
+		# 5x5 mesh: verify interior cells (3x3 = 9 interior cells)
+		cfg = {
+			'mesh_parameters': {
+				'x_range': [0, 1],
+				'y_range': [0, 1],
+				'num_cells_x': 5,
+				'num_cells_y': 5
+			}
+		}
+		path = os.path.join(self.tmpdir, 'mesh_5x5_interior.yaml')
+		with open(path, 'w') as f:
+			yaml.safe_dump(cfg, f)
+
+		parser = InputConfigParser(path)
+		mesh = MeshObject(parser)
+		mesh.generate_grid()
+
+		interior = mesh.get_interior_cells()
+		nx = parser.numCellsX_
+		ny = parser.numCellsY_
+
+		# For 5x5 grid, interior = (5-2) x (5-2) = 3x3 = 9
+		self.assertEqual(len(interior), (nx - 2) * (ny - 2))
+
+		# Verify all interior cells have 1 <= i <= 3 and 1 <= j <= 3
+		for cell in interior:
+			i, j = cell.get_indices()
+			self.assertTrue(1 <= i <= 3)
+			self.assertTrue(1 <= j <= 3)
+
+	def test_5x5_boundary_cells(self):
+		# 5x5 mesh: verify boundary cells (perimeter = 16 boundary cells)
+		cfg = {
+			'mesh_parameters': {
+				'x_range': [0, 1],
+				'y_range': [0, 1],
+				'num_cells_x': 5,
+				'num_cells_y': 5
+			}
+		}
+		path = os.path.join(self.tmpdir, 'mesh_5x5_boundary.yaml')
+		with open(path, 'w') as f:
+			yaml.safe_dump(cfg, f)
+
+		parser = InputConfigParser(path)
+		mesh = MeshObject(parser)
+		mesh.generate_grid()
+
+		boundary = mesh.get_boundary_cells()
+		nx = parser.numCellsX_
+		ny = parser.numCellsY_
+
+		# Total - interior = 25 - 9 = 16 boundary cells
+		expected_boundary_count = (nx * ny) - ((nx - 2) * (ny - 2))
+		self.assertEqual(len(boundary), expected_boundary_count)
+
+		# Verify all boundary cells have at least one index on edge (0 or nx-1 or ny-1)
+		for cell in boundary:
+			i, j = cell.get_indices()
+			on_edge = (i == 0 or i == nx - 1 or j == 0 or j == ny - 1)
+			self.assertTrue(on_edge)
+
+
 
 
 if __name__ == '__main__':

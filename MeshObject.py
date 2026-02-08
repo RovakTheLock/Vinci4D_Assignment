@@ -26,6 +26,8 @@ class MeshObject:
         self.internalFaces_ = None
         self.boundaryFaces_ = None
         self.cells_ = None
+        self.interiorCells_ = None
+        self.boundaryCells_ = None
         self.generate_grid()
         self.generate_faces()
     
@@ -70,7 +72,20 @@ class MeshObject:
                 centroid = (float(cellsX_centers[i]), float(cellsY_centers[j]))
                 cell = QE.Cell(flat_id, cell_volume, indices=(i, j), centroid=centroid)
                 self.cells_.append(cell)
+        # Compute interior and boundary cells once
+        self.interiorCells_ = []
+        for j in range(1, num_cells_y - 1):
+            for i in range(1, num_cells_x - 1):
+                flat_id = j * num_cells_x + i
+                self.interiorCells_.append(self.cells_[flat_id])
         
+        self.boundaryCells_ = []
+        for j in range(num_cells_y):
+            for i in range(num_cells_x):
+                # Check if cell is on boundary
+                if i == 0 or i == num_cells_x - 1 or j == 0 or j == num_cells_y - 1:
+                    flat_id = j * num_cells_x + i
+                    self.boundaryCells_.append(self.cells_[flat_id])
         print(f"Grid generated: {num_cells_x} x {num_cells_y} cells")
     
     def get_x_coordinates(self):
@@ -96,6 +111,12 @@ class MeshObject:
         if self.cells_ is None:
             self.generate_grid()
         return self.cells_
+    
+    def get_num_cells(self):
+        """Return total number of cells in the mesh"""
+        num_cells_x = self.config_parser_.numCellsX_
+        num_cells_y = self.config_parser_.numCellsY_
+        return num_cells_x * num_cells_y
 
     def get_cell_by_flat_id(self, flat_id):
         """Return Cell by flattened id or None if out of range"""
@@ -104,6 +125,18 @@ class MeshObject:
         if 0 <= flat_id < len(self.cells_):
             return self.cells_[flat_id]
         return None
+
+    def get_interior_cells(self):
+        """Return list of interior cells (not on domain boundary)"""
+        if self.interiorCells_ is None:
+            self.generate_grid()
+        return self.interiorCells_
+
+    def get_boundary_cells(self):
+        """Return list of boundary cells (on domain boundary)"""
+        if self.boundaryCells_ is None:
+            self.generate_grid()
+        return self.boundaryCells_
     
     def generate_faces(self):
         """
