@@ -2,7 +2,7 @@ import unittest
 import tempfile
 import os
 import yaml
-from YamlParser import MeshConfigParser
+from YamlParser import InputConfigParser
 
 
 class TestMeshConfigParser(unittest.TestCase):
@@ -39,12 +39,12 @@ class TestMeshConfigParser(unittest.TestCase):
     def test_init_stores_file_path(self):
         """Test that __init__ correctly stores the file path"""
         file_path = "test.yaml"
-        parser = MeshConfigParser(file_path)
+        parser = InputConfigParser(file_path)
         self.assertEqual(parser.filePath_, file_path)
 
     def test_init_initializes_ranges_as_none(self):
         """Test that __init__ initializes all range attributes as None"""
-        parser = MeshConfigParser("test.yaml")
+        parser = InputConfigParser("test.yaml")
         self.assertIsNone(parser.xRange_)
         self.assertIsNone(parser.yRange_)
         self.assertIsNone(parser.numCellsX_)
@@ -54,14 +54,14 @@ class TestMeshConfigParser(unittest.TestCase):
     def test_load_config_valid_file(self):
         """Test that load_config successfully loads a valid YAML file"""
         file_path = self._create_yaml_file("valid_config.yaml", self.valid_config)
-        parser = MeshConfigParser(file_path)
+        parser = InputConfigParser(file_path)
         parser.load_config()
         self.assertIsNotNone(parser.config_)
         self.assertEqual(parser.config_, self.valid_config)
 
     def test_load_config_file_not_found(self):
         """Test that load_config raises FileNotFoundError for non-existent file"""
-        parser = MeshConfigParser("nonexistent_file.yaml")
+        parser = InputConfigParser("nonexistent_file.yaml")
         with self.assertRaises(FileNotFoundError):
             parser.load_config()
 
@@ -71,7 +71,7 @@ class TestMeshConfigParser(unittest.TestCase):
         with open(file_path, 'w') as f:
             f.write("invalid: yaml: content: [")  # Malformed YAML
         
-        parser = MeshConfigParser(file_path)
+        parser = InputConfigParser(file_path)
         with self.assertRaises(yaml.YAMLError):
             parser.load_config()
 
@@ -79,7 +79,7 @@ class TestMeshConfigParser(unittest.TestCase):
     def test_parse_mesh_parameters_valid_config(self):
         """Test that parse_mesh_parameters correctly parses valid config"""
         file_path = self._create_yaml_file("valid_config.yaml", self.valid_config)
-        parser = MeshConfigParser(file_path)
+        parser = InputConfigParser(file_path)
         parser.parse_mesh_parameters()
         
         self.assertEqual(parser.xRange_, [0, 1])
@@ -90,7 +90,7 @@ class TestMeshConfigParser(unittest.TestCase):
     def test_parse_mesh_parameters_without_load_config(self):
         """Test that parse_mesh_parameters calls load_config internally"""
         file_path = self._create_yaml_file("valid_config.yaml", self.valid_config)
-        parser = MeshConfigParser(file_path)
+        parser = InputConfigParser(file_path)
         # Should not raise an error, load_config is called internally
         parser.parse_mesh_parameters()
         self.assertIsNotNone(parser.config_)
@@ -99,7 +99,7 @@ class TestMeshConfigParser(unittest.TestCase):
         """Test parsing when 'mesh_parameters' key is missing"""
         empty_config = {}
         file_path = self._create_yaml_file("empty_config.yaml", empty_config)
-        parser = MeshConfigParser(file_path)
+        parser = InputConfigParser(file_path)
         parser.parse_mesh_parameters()
         
         self.assertIsNone(parser.xRange_)
@@ -116,7 +116,7 @@ class TestMeshConfigParser(unittest.TestCase):
             }
         }
         file_path = self._create_yaml_file("partial_config.yaml", partial_config)
-        parser = MeshConfigParser(file_path)
+        parser = InputConfigParser(file_path)
         parser.parse_mesh_parameters()
         
         self.assertEqual(parser.xRange_, [0, 2])
@@ -135,7 +135,7 @@ class TestMeshConfigParser(unittest.TestCase):
             }
         }
         file_path = self._create_yaml_file("custom_config.yaml", custom_config)
-        parser = MeshConfigParser(file_path)
+        parser = InputConfigParser(file_path)
         parser.parse_mesh_parameters()
         
         self.assertEqual(parser.xRange_, [-5, 10])
@@ -145,7 +145,7 @@ class TestMeshConfigParser(unittest.TestCase):
 
     def test_parse_mesh_parameters_nonexistent_file(self):
         """Test that parse_mesh_parameters raises error for nonexistent file"""
-        parser = MeshConfigParser("nonexistent_file.yaml")
+        parser = InputConfigParser("nonexistent_file.yaml")
         with self.assertRaises(FileNotFoundError):
             parser.parse_mesh_parameters()
 
@@ -162,7 +162,7 @@ class TestMeshConfigParser(unittest.TestCase):
             'other_section': {'key': 'value'}
         }
         file_path = self._create_yaml_file("extra_config.yaml", config_with_extra)
-        parser = MeshConfigParser(file_path)
+        parser = InputConfigParser(file_path)
         parser.parse_mesh_parameters()
         
         self.assertEqual(parser.xRange_, [0, 1])
