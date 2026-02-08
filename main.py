@@ -2,6 +2,7 @@ import argparse
 import yaml
 import sys
 from YamlParser import InputConfigParser
+from MeshObject import MeshObject
 
 def main():
     parser = argparse.ArgumentParser(description="Process a mesh configuration file.")
@@ -13,6 +14,7 @@ def main():
     except Exception as e:
         print(f"An error occurred while trying to parse mesh parameters: {e}")
         sys.exit(1)
+    mesh = MeshObject(mesh_parser)
 
 if __name__ == "__main__":
     main()

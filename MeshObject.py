@@ -26,8 +26,8 @@ class MeshObject:
         self.internalFaces_ = None
         self.boundaryFaces_ = None
         self.cells_ = None
-        self.generate_faces()
         self.generate_grid()
+        self.generate_faces()
     
     def generate_grid(self):
         """
