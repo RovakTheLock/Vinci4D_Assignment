@@ -79,36 +79,33 @@ class Cell:
             indices (tuple): Optional (i, j) integer indices
             centroid (tuple): Optional (x, y) centroid coordinates
         """
-        self.flatId = int(flat_id)
-        self.volume = float(volume)
-        self.indices = tuple(indices) if indices is not None else None
-        self.centroid = tuple(centroid) if centroid is not None else None
-
-    def set_volume(self, vol):
-        self.volume = float(vol)
+        self.flatId_ = int(flat_id)
+        self.volume_ = float(volume)
+        self.indices_ = tuple(indices) if indices is not None else None
+        self.centroid_ = tuple(centroid) if centroid is not None else None
 
     def get_volume(self):
-        return self.volume
+        return self.volume_
 
     def get_flat_id(self):
-        return self.flatId
+        return self.flatId_
 
     def set_centroid(self, centroid):
-        self.centroid = tuple(centroid)
+        self.centroid_ = tuple(centroid)
 
     def get_centroid(self):
-        return self.centroid
+        return self.centroid_
 
     def set_indices(self, indices):
-        self.indices = tuple(indices)
+        self.indices_ = tuple(indices)
 
     def get_indices(self):
-        return self.indices
+        return self.indices_
 
     def __repr__(self):
         return (
-            f"Cell(flatId={self.flatId}, volume={self.volume}, "
-            f"indices={self.indices}, centroid={self.centroid})"
+            f"Cell(flatId={self.flatId_}, volume={self.volume_}, "
+            f"indices={self.indices_}, centroid={self.centroid_})"
         )
 
 
