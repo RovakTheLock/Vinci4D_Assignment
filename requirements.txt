@@ -2,5 +2,4 @@ PyYAML
 numpy
 pandas
 argparse
-unittest
-tempfile
+scipy
