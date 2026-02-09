@@ -10,7 +10,7 @@ class FieldNames(Enum):
     PRESSURE = "pressure"
     GRAD_PRESSURE = "grad_pressure"
     VELOCITY = "velocity"
-    FACE_FLUX = "face_flux"
+    MASS_FLUX_FACE = "mass_flux_face"
 
 class FieldArray:
     """

@@ -278,6 +278,35 @@ class TestMeshObject(unittest.TestCase):
 			on_edge = (i == 0 or i == nx - 1 or j == 0 or j == ny - 1)
 			self.assertTrue(on_edge)
 
+	def test_6x5_get_num_faces(self):
+
+		# 6x5 mesh: verify boundary cells (perimeter = 16 boundary cells)
+        # Test the get_num_faces method
+		num_cells_x = 6
+		num_cells_y = 5
+		cfg = {
+			'mesh_parameters': {
+				'x_range': [0, 1],
+				'y_range': [0, 1],
+				'num_cells_x': num_cells_x,
+				'num_cells_y': num_cells_y 
+			}
+		}
+		path = os.path.join(self.tmpdir, 'mesh_6x5_boundary.yaml')
+		with open(path, 'w') as f:
+			yaml.safe_dump(cfg, f)
+
+		parser = InputConfigParser(path)
+		mesh = MeshObject(parser)
+		mesh.generate_grid()
+
+        # Calculate expected unique faces
+		total_faces = 4 * (num_cells_x * num_cells_y)
+		horizontal_shared_faces = (num_cells_x - 1) * num_cells_y
+		vertical_shared_faces = (num_cells_y - 1) * num_cells_x
+		expected_faces = total_faces - (horizontal_shared_faces + vertical_shared_faces)
+
+		self.assertEqual(mesh.get_num_faces(), expected_faces)
 
 
 

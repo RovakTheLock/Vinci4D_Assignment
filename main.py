@@ -3,7 +3,9 @@ import yaml
 import sys
 from YamlParser import InputConfigParser
 from MeshObject import MeshObject
-import FieldsHolder as FH
+from FieldsHolder import FieldNames
+from FieldsHolder import FieldArray
+from FieldsHolder import DimType
 
 def main():
     parser = argparse.ArgumentParser(description="Process a mesh configuration file.")
@@ -17,8 +19,9 @@ def main():
         sys.exit(1)
     mesh = MeshObject(mesh_parser)
     fieldDict = {}
-    fieldDict[FH.FieldNames.PRESSURE.value] = FH.FieldArray(FH.FieldNames.PRESSURE.value, FH.DimType.SCALAR, mesh.get_num_cells())
-    fieldDict[FH.FieldNames.VELOCITY.value] = FH.FieldArray(FH.FieldNames.VELOCITY.value, FH.DimType.VECTOR, mesh.get_num_cells())
+    fieldDict[FieldNames.PRESSURE.value] = FieldArray(FieldNames.PRESSURE.value, DimType.SCALAR, mesh.get_num_cells())
+    fieldDict[FieldNames.VELOCITY.value] = FieldArray(FieldNames.VELOCITY.value, DimType.VECTOR, mesh.get_num_cells())
+    fieldDict[FieldNames.MASS_FLUX_FACE.value] = FieldArray(FieldNames.MASS_FLUX_FACE.value, DimType.SCALAR, mesh.get_num_faces())
 
 if __name__ == "__main__":
     main()

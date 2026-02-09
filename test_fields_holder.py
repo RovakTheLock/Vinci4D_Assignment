@@ -26,10 +26,10 @@ class TestFieldArray(unittest.TestCase):
     def test_scalar_array_face_flux(self):
         """Test scalar field array for face flux"""
         num_faces = 500
-        face_flux = FieldArray(FieldNames.FACE_FLUX.value, DimType.SCALAR, num_faces)
+        face_flux = FieldArray(FieldNames.MASS_FLUX_FACE.value, DimType.SCALAR, num_faces)
         
         # Check name
-        self.assertEqual(face_flux.get_name(), FieldNames.FACE_FLUX.value)
+        self.assertEqual(face_flux.get_name(), FieldNames.MASS_FLUX_FACE.value)
         
         # Check type is "Scalar"
         self.assertEqual(face_flux.get_type(), "Scalar")

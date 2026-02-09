@@ -117,6 +117,10 @@ class MeshObject:
         num_cells_x = self.config_parser_.numCellsX_
         num_cells_y = self.config_parser_.numCellsY_
         return num_cells_x * num_cells_y
+    
+    def get_num_faces(self):
+        """Return total number of faces in the mesh"""
+        return len(self.get_boundary_faces() + self.get_internal_faces())
 
     def get_cell_by_flat_id(self, flat_id):
         """Return Cell by flattened id or None if out of range"""
