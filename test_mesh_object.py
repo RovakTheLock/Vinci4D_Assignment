@@ -308,6 +308,57 @@ class TestMeshObject(unittest.TestCase):
 
 		self.assertEqual(mesh.get_num_faces(), expected_faces)
 
+	def test_10x5_boundaries(self):
+		# 5x5 mesh: verify boundary cells (perimeter = 16 boundary cells)
+		numCellsX_ = 10
+		numCellsY_ = 5
+		xRange = [0,1]
+		yRange = [0,1]
+		cfg = {
+			'mesh_parameters': {
+				'x_range': xRange,
+				'y_range': yRange,
+				'num_cells_x': numCellsX_,
+				'num_cells_y': numCellsY_
+			}
+		}
+		path = os.path.join(self.tmpdir, f'mesh_{numCellsX_}_{numCellsY_}_left_boundary.yaml')
+		with open(path, 'w') as f:
+			yaml.safe_dump(cfg, f)
+
+		parser = InputConfigParser(path)
+		mesh = MeshObject(parser)
+		mesh.generate_grid()
+		leftBoundaryFaces = mesh.get_left_boundary()
+		rightBoundaryFaces = mesh.get_right_boundary()
+		topBoundaryFaces = mesh.get_top_boundary()
+		bottomBoundaryFaces = mesh.get_bottom_boundary()
+
+		self.assertEqual(len(leftBoundaryFaces), numCellsY_)
+		self.assertEqual(len(rightBoundaryFaces), numCellsY_)
+		self.assertEqual(len(topBoundaryFaces), numCellsX_)
+		self.assertEqual(len(bottomBoundaryFaces), numCellsX_)
+
+		for f in leftBoundaryFaces:
+			faceCentroid = f.get_face_center()
+			self.assertEqual(faceCentroid[0], 0.0) # Left boundary faces should be at x=0
+			self.assertTrue(yRange[0] <= faceCentroid[1] <= yRange[1]) # y should be within domain bounds
+
+		for f in rightBoundaryFaces:
+			faceCentroid = f.get_face_center()
+			self.assertEqual(faceCentroid[0], 1.0) # Right boundary faces should be at x=1
+			self.assertTrue(yRange[0] <= faceCentroid[1] <= yRange[1]) # y should be within domain bounds
+
+		for f in topBoundaryFaces:
+			faceCentroid = f.get_face_center()
+			self.assertEqual(faceCentroid[1], 1.0) # Top boundary faces should be at y=1
+			self.assertTrue(xRange[0] <= faceCentroid[0] <= xRange[1]) # x should be within domain bounds
+
+		for f in bottomBoundaryFaces:
+			faceCentroid = f.get_face_center()
+			self.assertEqual(faceCentroid[1], 0.0) # Bottom boundary faces should be at y=0
+			self.assertTrue(xRange[0] <= faceCentroid[0] <= xRange[1]) # x should be within domain bounds
+
 
 
 if __name__ == '__main__':

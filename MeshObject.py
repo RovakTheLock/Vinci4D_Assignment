@@ -271,6 +271,30 @@ class MeshObject:
             self.generate_faces()
         return self.boundaryFaces_
     
+    def get_left_boundary(self):
+        """Get faces on the left boundary (x = x_min)"""
+        if self.boundaryFaces_ is None:
+            self.generate_faces()
+        return [f for f in self.boundaryFaces_ if f.get_normal_vector() == (-1.0, 0.0)]
+
+    def get_right_boundary(self):
+        """Get faces on the right boundary (x = x_max)"""
+        if self.boundaryFaces_ is None:
+            self.generate_faces()
+        return [f for f in self.boundaryFaces_ if f.get_normal_vector() == (1.0, 0.0)]
+
+    def get_bottom_boundary(self):
+        """Get faces on the bottom boundary (y = y_min)"""
+        if self.boundaryFaces_ is None:
+            self.generate_faces()
+        return [f for f in self.boundaryFaces_ if f.get_normal_vector() == (0.0, -1.0)]
+
+    def get_top_boundary(self):
+        """Get faces on the top boundary (y = y_max)"""
+        if self.boundaryFaces_ is None:
+            self.generate_faces()
+        return [f for f in self.boundaryFaces_ if f.get_normal_vector() == (0.0, 1.0)]
+    
     def __repr__(self):
         """String representation of MeshObject"""
         cells_x, cells_y = self.get_cell_count()
