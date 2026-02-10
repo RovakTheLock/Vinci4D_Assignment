@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.sparse import csr_matrix
 from scipy.linalg import solve
-from scipy.sparse.linalg import spsolve
+from scipy.sparse.linalg import spsolve, gmres, bicgstab, LinearOperator, spilu
 
 class LinearSystem:
     def __init__(self, num_dof, name, sparse=False):
@@ -25,17 +25,26 @@ class LinearSystem:
         
         self.rhs = np.zeros(num_dof)
     
-    def set_lhs(self, row, col, value):
-        """Set a value in the LHS matrix."""
+    def add_lhs(self, row, col, value):
+        """Add a value to the LHS matrix (cumulative sum)."""
         if self.sparse_:
             self.lhs_data.append((row, col, value))
             self.lhs = None  # Invalidate cached matrix
         else:
-            self.lhs[row, col] = value
+            self.lhs[row, col] += value
     
-    def set_rhs(self, row, value):
-        """Set a value in the RHS vector."""
-        self.rhs[row] = value
+    def add_rhs(self, row, value):
+        """Add a value to the RHS vector (cumulative sum)."""
+        self.rhs[row] += value
+    
+    def zero(self):
+        """Zero out both LHS matrix and RHS vector."""
+        if self.sparse_:
+            self.lhs_data = []
+            self.lhs = None
+        else:
+            self.lhs.fill(0.0)
+        self.rhs.fill(0.0)
     
     def get_lhs(self):
         """Get LHS matrix in appropriate format."""
@@ -46,13 +55,41 @@ class LinearSystem:
             return self.lhs
         return self.lhs
     
-    def solve(self):
-        """Solve the linear system and return solution."""
+    def solve(self, method='direct', **kwargs):
+        """
+        Solve the linear system.
+        
+        Args:
+            method (str): 'direct', 'gmres', or 'bicgstab'
+            **kwargs: Extra arguments passed to the solver (e.g., tol, restart, M)
+        """
         lhs = self.get_lhs()
-        if self.sparse_:
-            return spsolve(lhs, self.rhs)
+        
+        if method == 'direct':
+            if self.sparse_:
+                return spsolve(lhs, self.rhs)
+            else:
+                return solve(lhs, self.rhs)
+        
+        elif method == 'gmres':
+            # gmres returns (x, info); info == 0 means convergence
+            ilu = spilu(self.get_lhs())  # Precompute ILU preconditioner for iterative solvers
+            defaultPreconditioner = LinearOperator(self.lhs.shape,ilu.solve)
+            defaultArgs = {'rtol': 1e-8, 'restart': None, 'M': defaultPreconditioner}
+            if kwargs is not None:
+                defaultArgs.update(kwargs)
+            x, info = gmres(lhs, self.rhs, **defaultArgs)
+            if info != 0:
+                print(f"Warning: GMRES did not converge (info={info})")
+            return x
+            
+        elif method == 'bicgstab':
+            x, info = bicgstab(lhs, self.rhs, M=self.defaultPreconditioner_, **kwargs)
+            return x
+            
         else:
-            return solve(lhs, self.rhs)
+            raise ValueError(f"Unknown solver method: {method}")
+
     
     def __repr__(self):
-        return f"LinearSystem(name='{self.name_}', dof={self.numDof_})"
+        return f"LinearSystem(name='{self.name_}', # dof={self.numDof_})\nLHS:\n{self.get_lhs()}\nRHS:\n{self.rhs}"
