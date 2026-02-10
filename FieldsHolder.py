@@ -9,7 +9,9 @@ class DimType(Enum):
 class FieldNames(Enum):
     PRESSURE = "pressure"
     GRAD_PRESSURE = "grad_pressure"
-    VELOCITY = "velocity"
+    VELOCITY_NEW = "velocity_np1"
+    VELOCITY_OLD = "velocity_n"
+    VELOCITY_VERY_OLD = "velocity_nm1"
     MASS_FLUX_FACE = "mass_flux_face"
 
 class FieldArray:
@@ -50,7 +52,13 @@ class FieldArray:
     def initialize_constant(self,value):
         """Initialize the field data with a constant value"""
         self.data_.fill(value)
+
+    def swap_fields(self, other):
+        """Swap the data arrays with another FieldArray (useful for time-stepping)"""
+        assert self.fieldType_ == other.fieldType_, "Can only swap fields of the same type"
+        assert self.data_.shape == other.data_.shape, "Can only swap fields with the same shape"
+        self.data_, other.data_ = other.data_, self.data_
     
     def __repr__(self):
-        return f"FieldArray(name='{self.name_}', type='{self.get_type()}', num_components={self.numComponents_})"
+        return f"FieldArray(name='{self.name_}', type='{self.get_type()}', num_components={self.numComponents_})\nData: {self.data_}"
     

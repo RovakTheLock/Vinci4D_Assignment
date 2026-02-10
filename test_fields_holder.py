@@ -44,10 +44,10 @@ class TestFieldArray(unittest.TestCase):
     def test_vector_array_velocity(self):
         """Test vector field array for velocity"""
         num_cells = 100
-        velocity = FieldArray(FieldNames.VELOCITY.value, DimType.VECTOR, num_cells)
+        velocity = FieldArray(FieldNames.VELOCITY_NEW.value, DimType.VECTOR, num_cells)
         
         # Check name
-        self.assertEqual(velocity.get_name(), FieldNames.VELOCITY.value)
+        self.assertEqual(velocity.get_name(), FieldNames.VELOCITY_NEW.value)
         
         # Check type is "Vector"
         self.assertEqual(velocity.get_type(), "Vector")
@@ -71,6 +71,29 @@ class TestFieldArray(unittest.TestCase):
         # Verify all values are 2.0
         expected = np.full(num_cells, constant_value)
         np.testing.assert_array_equal(pressure.get_data(), expected)
+
+
+    def test_vector_array_velocity_swap(self):
+        """Test swap_fields method for velocity field"""
+        num_cells = 100
+        velocity_new = FieldArray(FieldNames.VELOCITY_NEW.value, DimType.VECTOR, num_cells)
+        velocity_old = FieldArray(FieldNames.VELOCITY_OLD.value, DimType.VECTOR, num_cells)
+        
+        # Initialize velocity_new with some values
+        velocity_new.initialize_constant(1.0)
+        
+        # Initialize velocity_old with different values
+        velocity_old.initialize_constant(2.0)
+        
+        # Swap fields
+        velocity_new.swap_fields(velocity_old)
+        
+        # Verify that the data has been swapped correctly
+        expected_new = np.full(num_cells * 2, 2.0)  # Should now be 2.0 (old values of velocity_old)
+        expected_old = np.full(num_cells * 2, 1.0)  # Should now be 1.0 (old values of velocity_new)
+        
+        np.testing.assert_array_equal(velocity_new.get_data(), expected_new)
+        np.testing.assert_array_equal(velocity_old.get_data(), expected_old)
 
 
 if __name__ == '__main__':

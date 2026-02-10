@@ -20,7 +20,7 @@ def main():
     mesh = MeshObject(mesh_parser)
     fieldDict = {}
     fieldDict[FieldNames.PRESSURE.value] = FieldArray(FieldNames.PRESSURE.value, DimType.SCALAR, mesh.get_num_cells())
-    fieldDict[FieldNames.VELOCITY.value] = FieldArray(FieldNames.VELOCITY.value, DimType.VECTOR, mesh.get_num_cells())
+    fieldDict[FieldNames.VELOCITY_NEW.value] = FieldArray(FieldNames.VELOCITY_NEW.value, DimType.VECTOR, mesh.get_num_cells())
     fieldDict[FieldNames.MASS_FLUX_FACE.value] = FieldArray(FieldNames.MASS_FLUX_FACE.value, DimType.SCALAR, mesh.get_num_faces())
 
 if __name__ == "__main__":
