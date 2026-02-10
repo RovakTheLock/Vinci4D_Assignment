@@ -28,6 +28,10 @@ class MeshObject:
         self.cells_ = None
         self.interiorCells_ = None
         self.boundaryCells_ = None
+        self.leftBoundaryFaces_ = None
+        self.rightBoundaryFaces_ = None
+        self.bottomBoundaryFaces_ = None
+        self.topBoundaryFaces_ = None
         self.generate_grid()
         self.generate_faces()
     
@@ -249,7 +253,10 @@ class MeshObject:
                     self.boundaryFaces_.append(face)
                     self.faces_.append(face)
                     face_id += 1
-        
+        self.leftBoundaryFaces_ = [f for f in self.boundaryFaces_ if f.get_normal_vector() == (-1.0, 0.0)]
+        self.rightBoundaryFaces_ = [f for f in self.boundaryFaces_ if f.get_normal_vector() == (1.0, 0.0)]
+        self.bottomBoundaryFaces_ = [f for f in self.boundaryFaces_ if f.get_normal_vector() == (0.0, -1.0)]
+        self.topBoundaryFaces_ = [f for f in self.boundaryFaces_ if f.get_normal_vector() == (0.0, 1.0)]
         print(f"Generated {len(self.faces_)} faces: "
               f"{len(self.internalFaces_)} internal, {len(self.boundaryFaces_)} boundary")
     
@@ -273,27 +280,27 @@ class MeshObject:
     
     def get_left_boundary(self):
         """Get faces on the left boundary (x = x_min)"""
-        if self.boundaryFaces_ is None:
+        if self.leftBoundaryFaces_ is None:
             self.generate_faces()
-        return [f for f in self.boundaryFaces_ if f.get_normal_vector() == (-1.0, 0.0)]
+        return self.leftBoundaryFaces_
 
     def get_right_boundary(self):
         """Get faces on the right boundary (x = x_max)"""
-        if self.boundaryFaces_ is None:
+        if self.rightBoundaryFaces_ is None:
             self.generate_faces()
-        return [f for f in self.boundaryFaces_ if f.get_normal_vector() == (1.0, 0.0)]
+        return self.rightBoundaryFaces_
 
     def get_bottom_boundary(self):
         """Get faces on the bottom boundary (y = y_min)"""
-        if self.boundaryFaces_ is None:
+        if self.bottomBoundaryFaces_ is None:
             self.generate_faces()
-        return [f for f in self.boundaryFaces_ if f.get_normal_vector() == (0.0, -1.0)]
+        return self.bottomBoundaryFaces_
 
     def get_top_boundary(self):
         """Get faces on the top boundary (y = y_max)"""
-        if self.boundaryFaces_ is None:
+        if self.topBoundaryFaces_ is None:
             self.generate_faces()
-        return [f for f in self.boundaryFaces_ if f.get_normal_vector() == (0.0, 1.0)]
+        return self.topBoundaryFaces_
     
     def __repr__(self):
         """String representation of MeshObject"""
