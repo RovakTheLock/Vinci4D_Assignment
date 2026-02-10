@@ -76,10 +76,10 @@ class AssembleDirichletBoundaryScalarDiffusionToLinSystem(AssembleSystemBase):
     def assemble(self):
         """Loop over boundary faces and assemble diffusive flux."""
         for face in self.myFaceIterable_:
-            signFactor = -1.0
+            signFactor = 1.0
             if face.get_left_cell() is None:
                 cellID = face.get_right_cell()  # For boundary faces, only one cell contributes
-                signFactor = 1.0  # Normal points outward, so flux is reversed
+                signFactor = -1.0  # Normal points outward, so flux is reversed
             else:
                 cellID = face.get_left_cell()
             faceArea = face.get_area()
@@ -94,5 +94,6 @@ class AssembleDirichletBoundaryScalarDiffusionToLinSystem(AssembleSystemBase):
             normalDistance = abs(normal[0]*distanceVec[0] + normal[1]*distanceVec[1])
             lhsFactor = (self.diffusionCoeff_ * faceArea) / normalDistance * signFactor
             gradDotArea = (self.boundaryValue_ - self.fieldsHolder_.get_data()[cellID])*lhsFactor
+            print(gradDotArea, signFactor, lhsFactor)
             self.linearSystem_.add_rhs(cellID, gradDotArea)
-            self.linearSystem_.add_lhs(cellID, cellID, -lhsFactor)
+            self.linearSystem_.add_lhs(cellID, cellID, lhsFactor)

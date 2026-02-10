@@ -62,6 +62,8 @@ class TestOperations(unittest.TestCase):
 				'num_cells_y': cells_y
 			}
 		}
+		rightValue = 1.0
+		leftValue = 0.0
 		path = os.path.join(self.tmpdir, 'mesh.yaml')
 		with open(path, 'w') as f:
 			yaml.safe_dump(cfg, f)
@@ -73,15 +75,30 @@ class TestOperations(unittest.TestCase):
 		pressureField.initialize_constant(0.)  # Initialize pressure field to zero
 		system = LinearSystem(mesh.get_num_cells(), "test_system", sparse=False)
 		diffusionScalarAlg = AssembleInteriorScalarDiffusionToLinSystem("Pressure_diffusion_test", mesh.get_num_cells(), pressureField, system, mesh, diffusionCoeff=1.0)
-		diffusionScalarAlgLeft = AssembleDirichletBoundaryScalarDiffusionToLinSystem("Pressure_diffusion_test_boundary", mesh.get_num_cells(), pressureField, system, mesh, boundaryType=Boundary.LEFT, boundaryValue=0.0, diffusionCoeff=1.0)
-		diffusionScalarAlgRight = AssembleDirichletBoundaryScalarDiffusionToLinSystem("Pressure_diffusion_test_boundary", mesh.get_num_cells(), pressureField, system, mesh, boundaryType=Boundary.RIGHT, boundaryValue=1.0, diffusionCoeff=1.0)
+		diffusionScalarAlgLeft = AssembleDirichletBoundaryScalarDiffusionToLinSystem("Pressure_diffusion_test_boundary", mesh.get_num_cells(), pressureField, system, mesh, boundaryType=Boundary.LEFT, boundaryValue=leftValue, diffusionCoeff=1.0)
+		diffusionScalarAlgRight = AssembleDirichletBoundaryScalarDiffusionToLinSystem("Pressure_diffusion_test_boundary", mesh.get_num_cells(), pressureField, system, mesh, boundaryType=Boundary.RIGHT, boundaryValue=rightValue, diffusionCoeff=1.0)
 		allAlgs = [diffusionScalarAlg, diffusionScalarAlgLeft, diffusionScalarAlgRight]
 		for alg in allAlgs:
 			alg.zero()
 		for alg in allAlgs:
 			alg.assemble()
 		dP = system.solve()
-		print(pressureField)
-		print(dP)
+		
+        ## we should know what the RHS value should be on the boundary for this setup....
+		rightBoundaryFaceCells =  mesh.get_right_boundary()
+		faceArea = rightBoundaryFaceCells[0].get_area()
+		rightBoundaryCellRHS = (rightValue - 0)/(faceArea/2)*faceArea
+		for face in rightBoundaryFaceCells:
+			rightCellID = face.get_right_cell()
+			leftCellID = face.get_left_cell()
+			self.assertEqual(rightCellID, None)  
+			self.assertAlmostEqual(system.get_rhs()[leftCellID], rightBoundaryCellRHS, places=5)
+		
+        # linear profile for dP, our solution
+		for cell in mesh.get_cells():
+			cellID = cell.get_flat_id()
+			expectedValue = cell.get_centroid()[0]  # Linear profile from 0 to 1 across the domain
+			self.assertAlmostEqual(dP[cellID], expectedValue, places=5)
+        
 		
 		

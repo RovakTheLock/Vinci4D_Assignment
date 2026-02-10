@@ -54,6 +54,10 @@ class LinearSystem:
                 self.lhs = csr_matrix((vals, (rows, cols)), shape=(self.numDof_, self.numDof_))
             return self.lhs
         return self.lhs
+
+    def get_rhs(self):
+        """Get RHS vector."""
+        return self.rhs
     
     def solve(self, method='direct', **kwargs):
         """
