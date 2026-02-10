@@ -14,7 +14,7 @@ class TestFieldArray(unittest.TestCase):
         self.assertEqual(pressure.get_name(), FieldNames.PRESSURE.value)
         
         # Check type is "Scalar"
-        self.assertEqual(pressure.get_type(), "Scalar")
+        self.assertEqual(pressure.get_type(), DimType.SCALAR)
         
         # Check number of components is 1
         self.assertEqual(pressure.get_num_components(), 1)
@@ -32,7 +32,7 @@ class TestFieldArray(unittest.TestCase):
         self.assertEqual(face_flux.get_name(), FieldNames.MASS_FLUX_FACE.value)
         
         # Check type is "Scalar"
-        self.assertEqual(face_flux.get_type(), "Scalar")
+        self.assertEqual(face_flux.get_type(), DimType.SCALAR)
         
         # Check number of components is 1
         self.assertEqual(face_flux.get_num_components(), 1)
@@ -50,7 +50,7 @@ class TestFieldArray(unittest.TestCase):
         self.assertEqual(velocity.get_name(), FieldNames.VELOCITY_NEW.value)
         
         # Check type is "Vector"
-        self.assertEqual(velocity.get_type(), "Vector")
+        self.assertEqual(velocity.get_type(), DimType.VECTOR)
         
         # Check number of components is 2
         self.assertEqual(velocity.get_num_components(), 2)

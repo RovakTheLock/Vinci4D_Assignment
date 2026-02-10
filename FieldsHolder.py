@@ -39,7 +39,7 @@ class FieldArray:
     
     def get_type(self):
         """Get the type of the field as a string ('Scalar' or 'Vector')"""
-        return "Scalar" if self.fieldType_ == DimType.SCALAR else "Vector"
+        return self.fieldType_
     
     def get_num_components(self):
         """Get the number of components in the field (1 for scalar, 2 for vector)"""
