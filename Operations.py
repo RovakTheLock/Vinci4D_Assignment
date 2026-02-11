@@ -1,13 +1,67 @@
 import numpy as np
-import FieldsHolder as FH
+from FieldsHolder import FieldArray, MAX_DIM
 from MeshObject import MeshObject
+
+
+class ComputeInteriorMassFlux:
+    def __init__(self, mesh_object, velocity_field_array, pressure_field_array, cell_pressure_gradient_field_array, dt):
+        self.myMeshObject_ : MeshObject = mesh_object
+        self.velocity_field_array_ : FieldArray = velocity_field_array
+        self.pressure_field_array_ : FieldArray = pressure_field_array
+        self.cell_pressure_gradient_field_array_ : FieldArray = cell_pressure_gradient_field_array # assume cell gradient has already been computed. . .
+        self.dt_ = dt
+    def compute_mass_flux(self):
+        """Compute the mass flux across each face in the mesh based on the velocity field and pressure gradient"""
+        for face in self.myMeshObject_.get_internal_faces():
+            leftCellID = face.get_left_cell()
+            rightCellID = face.get_right_cell()
+            
+            # Get the velocity values for the left and right cells
+            leftVelocity_x = self.velocity_field_array_.get_data()[leftCellID*MAX_DIM + 0]
+            leftVelocity_y = self.velocity_field_array_.get_data()[leftCellID*MAX_DIM + 1]
+            rightVelocity_x = self.velocity_field_array_.get_data()[rightCellID*MAX_DIM + 0]
+            rightVelocity_y = self.velocity_field_array_.get_data()[rightCellID*MAX_DIM + 1]
+
+            # Get the pressure gradient values for the left and right cells
+            leftGradPressure_x = self.cell_pressure_gradient_field_array_.get_data()[leftCellID*MAX_DIM + 0]
+            leftGradPressure_y = self.cell_pressure_gradient_field_array_.get_data()[leftCellID*MAX_DIM + 1]
+            rightGradPressure_x = self.cell_pressure_gradient_field_array_.get_data()[rightCellID*MAX_DIM + 0]
+            rightGradPressure_y = self.cell_pressure_gradient_field_array_.get_data()[rightCellID*MAX_DIM + 1]
+
+            # Get the pressure valuse for the left and right cells
+            leftPressure = self.pressure_field_array_.get_data()[leftCellID]
+            rightPressure = self.pressure_field_array_.get_data()[rightCellID]
+
+            # Compute the mass flux contribution for this face based on rhie-chow interpolation.
+            normalVector = face.get_normal_vector()
+            
+            # Average velocity/gradP at the face
+            faceVelocity_x = 0.5*(leftVelocity_x + rightVelocity_x)
+            faceVelocity_y = 0.5*(leftVelocity_y + rightVelocity_y)
+            cellGradPressure_x = 0.5*(leftGradPressure_x + rightGradPressure_x)
+            cellGradPressure_y = 0.5*(leftGradPressure_y + rightGradPressure_y)
+
+            cellLeft = self.myMeshObject_.get_cell_by_flat_id(leftCellID)
+            cellRight = self.myMeshObject_.get_cell_by_flat_id(rightCellID)
+            distance = 0.0
+            for i in range(MAX_DIM):
+                distance += (cellRight.get_centroid()[i] - cellLeft.get_centroid()[i])*normalVector[i]
+            faceGradPressure_dot_n = (rightPressure - leftPressure)/distance
+            scaling = self.dt_
+            u_dot_n = faceVelocity_x*normalVector[0] + faceVelocity_y*normalVector[1]
+            cellGradP_dot_n = cellGradPressure_x*normalVector[0] + cellGradPressure_y*normalVector[1]
+            # Compute mass flux as velocity dot normal times area of the face
+            mass_flux = (u_dot_n + scaling *((cellGradP_dot_n-faceGradPressure_dot_n))) * face.get_area()
+            
+            # Store the computed mass flux in the face object (you may want to have a separate field array for this in practice)
+            face.massFlux_ = mass_flux
 
 class ComputeCellGradient:
     """Class to compute cell gradients for a given field array"""
     def __init__(self, mesh_object, in_field_array, out_field_array):
         self.mesh_object_ : MeshObject = mesh_object
-        self.field_array_ : FH.FieldArray = in_field_array
-        self.out_field_array_ : FH.FieldArray = out_field_array
+        self.field_array_ : FieldArray = in_field_array
+        self.out_field_array_ : FieldArray = out_field_array
     
     def compute_scalar_gradient(self):
         """Compute the gradient of the field array for each cell in the mesh"""

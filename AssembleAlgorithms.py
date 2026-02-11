@@ -20,7 +20,7 @@ class AssembleSystemBase:
         raise NotImplementedError("Must implement assemble() in subclass")
     def __repr__(self):
         return f"AssembleSystemBase(name='{self.name_}', numDof={self.numDof_}, field='{self.fieldsHolder_.get_name()}')"
-    
+
 class AssembleCellVectorTimeTerm(AssembleSystemBase):
     def __init__(self, name, numDof, fieldsHolderNew, fieldsHolderOld, linearSystem, meshObject, dt):
         super().__init__(name, numDof, fieldsHolderNew, linearSystem)

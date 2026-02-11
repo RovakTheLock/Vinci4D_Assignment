@@ -23,6 +23,7 @@ class Face:
         self.normalVector_ = normal_vector
         self.area_ = None  # Will be computed based on mesh spacing
         self.isBoundary_ = right_cell_idx is None
+        self.massFlux_ = 0.0  # Initialize mass flux to zero
     
     def set_area(self, area):
         """Set the face area (length in 2D)"""
@@ -59,6 +60,7 @@ class Face:
             f"right={self.rightCellFlatId_}, "
             f"coords={self.faceCoords_}, "
             f"normal={self.normalVector_}, "
+            f"mass_flux={self.massFlux_}, "
             f"boundary={self.isBoundary_})"
         )
 
