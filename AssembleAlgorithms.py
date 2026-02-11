@@ -20,6 +20,25 @@ class AssembleSystemBase:
         raise NotImplementedError("Must implement assemble() in subclass")
     def __repr__(self):
         return f"AssembleSystemBase(name='{self.name_}', numDof={self.numDof_}, field='{self.fieldsHolder_.get_name()}')"
+    
+class AssembleCellVectorTimeTerm(AssembleSystemBase):
+    def __init__(self, name, numDof, fieldsHolderNew, fieldsHolderOld, linearSystem, meshObject, dt):
+        super().__init__(name, numDof, fieldsHolderNew, linearSystem)
+        self.myMeshObject_ = meshObject
+        self.dt_ = dt
+        self.fieldHolderOld_ = fieldsHolderOld
+        assert fieldsHolderNew.get_type() == DimType.VECTOR, "AssembleCellVectorTimeTerm requires a vector field for state NEW"
+        assert fieldsHolderOld.get_type() == DimType.VECTOR, "AssembleCellVectorTimeTerm requires a vector field for state OLD"
+    def assemble(self):
+        for cell in self.myMeshObject_.get_cells():
+            cellID = cell.get_flat_id()
+            cellVolume = cell.get_volume()
+            for comp in range(self.fieldsHolder_.get_num_components()):
+                lhsFactor = cellVolume/self.dt_
+                rowIndex = cellID*self.fieldsHolder_.get_num_components() + comp
+                value = (self.fieldsHolder_.get_data()[rowIndex] - self.fieldHolderOld_.get_data()[rowIndex])*lhsFactor
+                self.linearSystem_.add_lhs(rowIndex, rowIndex, cellVolume/self.dt_)
+                self.linearSystem_.add_rhs(rowIndex, -value*cellVolume/self.dt_)
 
 class AssembleInteriorScalarDiffusionToLinSystem(AssembleSystemBase):
     def __init__(self, name, numDof, fieldsHolder, linearSystem, meshObject, diffusionCoeff=1.0):

@@ -6,8 +6,8 @@ import numpy as np
 from YamlParser import InputConfigParser
 from MeshObject import MeshObject
 from QuadElement import Face, Cell
-import FieldsHolder as FH
-from AssembleAlgorithms import AssembleInteriorScalarDiffusionToLinSystem, AssembleDirichletBoundaryScalarDiffusionToLinSystem, Boundary
+from FieldsHolder import FieldArray, DimType, FieldNames, MAX_DIM
+from AssembleAlgorithms import AssembleInteriorScalarDiffusionToLinSystem, AssembleDirichletBoundaryScalarDiffusionToLinSystem, Boundary, AssembleCellVectorTimeTerm
 from LinearSystem import LinearSystem
 
 
@@ -38,7 +38,7 @@ class TestOperations(unittest.TestCase):
 		parser = InputConfigParser(path)
 		mesh = MeshObject(parser)
 		mesh.generate_grid()
-		pressureField = FH.FieldArray(FH.FieldNames.PRESSURE.value, FH.DimType.SCALAR, mesh.get_num_cells())
+		pressureField = FieldArray(FieldNames.PRESSURE.value, DimType.SCALAR, mesh.get_num_cells())
 		pressureField.initialize_constant(0.)  # Initialize pressure field to zero
 		system = LinearSystem(mesh.get_num_cells(), "test_system", sparse=False)
 		diffusionScalarAlg = AssembleInteriorScalarDiffusionToLinSystem("Pressure_diffusion_test", mesh.get_num_cells(), pressureField, system, mesh, diffusionCoeff=1.0)
@@ -71,7 +71,7 @@ class TestOperations(unittest.TestCase):
 		parser = InputConfigParser(path)
 		mesh = MeshObject(parser)
 		mesh.generate_grid()
-		pressureField = FH.FieldArray(FH.FieldNames.PRESSURE.value, FH.DimType.SCALAR, mesh.get_num_cells())
+		pressureField = FieldArray(FieldNames.PRESSURE.value, DimType.SCALAR, mesh.get_num_cells())
 		pressureField.initialize_constant(0.)  # Initialize pressure field to zero
 		system = LinearSystem(mesh.get_num_cells(), "test_system", sparse=False)
 		diffusionScalarAlg = AssembleInteriorScalarDiffusionToLinSystem("Pressure_diffusion_test", mesh.get_num_cells(), pressureField, system, mesh, diffusionCoeff=1.0)
@@ -121,7 +121,7 @@ class TestOperations(unittest.TestCase):
 		parser = InputConfigParser(path)
 		mesh = MeshObject(parser)
 		mesh.generate_grid()
-		pressureField = FH.FieldArray(FH.FieldNames.PRESSURE.value, FH.DimType.SCALAR, mesh.get_num_cells())
+		pressureField = FieldArray(FieldNames.PRESSURE.value, DimType.SCALAR, mesh.get_num_cells())
 		pressureField.initialize_constant(0.)  # Initialize pressure field to zero
 		system = LinearSystem(mesh.get_num_cells(), "test_system", sparse=False)
 		diffusionScalarAlg = AssembleInteriorScalarDiffusionToLinSystem("Pressure_diffusion_test", mesh.get_num_cells(), pressureField, system, mesh, diffusionCoeff=1.0)
@@ -175,7 +175,7 @@ class TestOperations(unittest.TestCase):
 		parser = InputConfigParser(path)
 		mesh = MeshObject(parser)
 		mesh.generate_grid()
-		pressureField = FH.FieldArray(FH.FieldNames.PRESSURE.value, FH.DimType.SCALAR, mesh.get_num_cells())
+		pressureField = FieldArray(FieldNames.PRESSURE.value, DimType.SCALAR, mesh.get_num_cells())
 		pressureField.initialize_constant(0.)  # Initialize pressure field to zero
 		system = LinearSystem(mesh.get_num_cells(), "test_system", sparse=False)
 		diffusionScalarAlg = AssembleInteriorScalarDiffusionToLinSystem("Pressure_diffusion_test", mesh.get_num_cells(), pressureField, system, mesh, diffusionCoeff=1.0)
@@ -209,3 +209,37 @@ class TestOperations(unittest.TestCase):
 			slope = (topValue-bottomValue)/1.0
 			expectedValue = cell.get_centroid()[1]*slope + bottomValue  # Linear profile from rightValue to leftValue across the domain
 			self.assertAlmostEqual(dP[cellID], expectedValue, places=5)
+
+	def test_3x3_time_term(self):
+		cells_x = 3
+		cells_y = 3
+		cfg = {
+			'mesh_parameters': {
+				'x_range': [0, 1],
+				'y_range': [0, 1],
+				'num_cells_x': cells_x,
+				'num_cells_y': cells_y
+			}
+		}
+		dt = 1.0e-3
+		exactVolume = 1.0/(cells_x*cells_y)
+		expectedValue = exactVolume/dt
+		path = os.path.join(self.tmpdir, 'mesh.yaml')
+		with open(path, 'w') as f:
+			yaml.safe_dump(cfg, f)
+
+		parser = InputConfigParser(path)
+		mesh = MeshObject(parser)
+		mesh.generate_grid()
+		velocityNp1 = FieldArray(FieldNames.VELOCITY_NEW.value, DimType.VECTOR, mesh.get_num_cells())
+		velocityN = FieldArray(FieldNames.VELOCITY_OLD.value, DimType.VECTOR, mesh.get_num_cells())
+		system = LinearSystem(mesh.get_num_cells()*MAX_DIM, "test_system", sparse=False)
+		timeTermAlg = AssembleCellVectorTimeTerm("Velocity_time_term", mesh.get_num_cells(), velocityNp1, velocityN, system, mesh, dt)
+		timeTermAlg.zero()
+		timeTermAlg.assemble()
+		for cell in mesh.get_cells():
+			cellID = cell.get_flat_id()
+			for comp in range(MAX_DIM):
+				rowIndex = cellID*MAX_DIM + comp
+				self.assertAlmostEqual(system.get_lhs()[rowIndex, rowIndex], expectedValue, places=5)
+	

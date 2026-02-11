@@ -1,7 +1,8 @@
 import numpy as np
 from enum import Enum
 
-# 1. Define the Enum
+
+MAX_DIM=2
 class DimType(Enum):
     SCALAR = 0
     VECTOR = 1
@@ -30,7 +31,7 @@ class FieldArray:
         
         self.name_ = name
         self.fieldType_ = fieldType
-        self.numComponents_ = 1 if fieldType == DimType.SCALAR else 2  # Assuming 2D vector fields for VECTOR type
+        self.numComponents_ = 1 if fieldType == DimType.SCALAR else MAX_DIM  # Assuming 2D vector fields for VECTOR type
         self.data_ = np.zeros(num_points * self.numComponents_)
 
     def get_name(self):
