@@ -7,7 +7,7 @@ from YamlParser import InputConfigParser
 from MeshObject import MeshObject
 from QuadElement import Face, Cell
 from FieldsHolder import FieldArray, DimType, FieldNames, MAX_DIM
-from AssembleAlgorithms import AssembleInteriorScalarDiffusionToLinSystem, AssembleDirichletBoundaryScalarDiffusionToLinSystem, Boundary, AssembleCellVectorTimeTerm
+from AssembleAlgorithms import AssembleInteriorScalarDiffusionToLinSystem, AssembleDirichletBoundaryScalarDiffusionToLinSystem, Boundary, AssembleCellVectorTimeTerm, AssembleInteriorVectorDiffusionToLinSystem, AssembleDirichletBoundaryVectorDiffusionToLinSystem
 from LinearSystem import LinearSystem
 
 
@@ -242,4 +242,117 @@ class TestOperations(unittest.TestCase):
 			for comp in range(MAX_DIM):
 				rowIndex = cellID*MAX_DIM + comp
 				self.assertAlmostEqual(system.get_lhs()[rowIndex, rowIndex], expectedValue, places=5)
+
+	def test_3x3_full_vector_diffusion_nonzero_x(self):
+		cells_x = 3
+		cells_y = 3
+		cfg = {
+			'mesh_parameters': {
+				'x_range': [0, 1],
+				'y_range': [0, 1],
+				'num_cells_x': cells_x,
+				'num_cells_y': cells_y
+			}
+		}
+		rightValue = [1.0,0.0]
+		leftValue = [10.0,0.0]
+		path = os.path.join(self.tmpdir, 'mesh.yaml')
+		with open(path, 'w') as f:
+			yaml.safe_dump(cfg, f)
+
+		parser = InputConfigParser(path)
+		mesh = MeshObject(parser)
+		mesh.generate_grid()
+		velocityField = FieldArray(FieldNames.VELOCITY_NEW.value, DimType.VECTOR, mesh.get_num_cells())
+		velocityField.initialize_constant(0.)  # Initialize field to zero
+		system = LinearSystem(mesh.get_num_cells()*MAX_DIM, "test_system", sparse=False)
+		diffusionVectorAlg = AssembleInteriorVectorDiffusionToLinSystem("Pressure_diffusion_test", mesh.get_num_cells(), velocityField, system, mesh, diffusionCoeff=1.0)
+		diffusionVectorAlgLeft = AssembleDirichletBoundaryVectorDiffusionToLinSystem("Pressure_diffusion_test_boundary", mesh.get_num_cells(), velocityField, system, mesh, boundaryType=Boundary.LEFT, boundaryValue=leftValue, diffusionCoeff=1.0)
+		diffusionVectorAlgRight = AssembleDirichletBoundaryVectorDiffusionToLinSystem("Pressure_diffusion_test_boundary", mesh.get_num_cells(), velocityField, system, mesh, boundaryType=Boundary.RIGHT, boundaryValue=rightValue, diffusionCoeff=1.0)
+		allAlgs = [diffusionVectorAlg, diffusionVectorAlgLeft, diffusionVectorAlgRight]
+		for alg in allAlgs:
+			alg.zero()
+		for alg in allAlgs:
+			alg.assemble()
+		dU = system.solve()
+		
+        ## we should know what the RHS value should be on the boundary for this setup....
+		rightBoundaryFaceCells =  mesh.get_right_boundary()
+		faceArea = rightBoundaryFaceCells[0].get_area()
+		rightBoundaryCellRHS = [(rightValue[i] - 0)/(faceArea/2)*faceArea for i in range(MAX_DIM)]
+		for face in rightBoundaryFaceCells:
+			leftCellID = face.get_left_cell()
+			for comp in range(MAX_DIM):
+				self.assertAlmostEqual(system.get_rhs()[leftCellID*MAX_DIM + comp], rightBoundaryCellRHS[comp], places=5)
+
+		leftBoundaryFaceCells =  mesh.get_left_boundary()
+		leftBoundaryCellRHS = [-(0 - leftValue[i])/(faceArea/2)*faceArea for i in range(MAX_DIM)] # normal points in negative direction for left boundary
+		for face in leftBoundaryFaceCells:
+			leftCellID = face.get_left_cell()
+			for comp in range(MAX_DIM):
+				self.assertAlmostEqual(system.get_rhs()[leftCellID*MAX_DIM + comp], leftBoundaryCellRHS[comp], places=5)
+		
+        # linear profile for dP, our 
+		for cell in mesh.get_cells():
+			cellID = cell.get_flat_id()
+			slope = [(rightValue[i]-leftValue[i])/1.0 for i in range(MAX_DIM)]
+			expectedValue = [cell.get_centroid()[0]*slope[i] + leftValue[i] for i in range(MAX_DIM)]  # Linear profile from rightValue to leftValue across the domain
+			for comp in range(MAX_DIM):
+				self.assertAlmostEqual(dU[cellID*MAX_DIM + comp], expectedValue[comp], places=5)
 	
+	def test_3x3_full_vector_diffusion_nonzero_y(self):
+		cells_x = 3
+		cells_y = 3
+		cfg = {
+			'mesh_parameters': {
+				'x_range': [0, 1],
+				'y_range': [0, 1],
+				'num_cells_x': cells_x,
+				'num_cells_y': cells_y
+			}
+		}
+		rightValue = [0.0,10.0]
+		leftValue = [0.0,2.0]
+		path = os.path.join(self.tmpdir, 'mesh.yaml')
+		with open(path, 'w') as f:
+			yaml.safe_dump(cfg, f)
+
+		parser = InputConfigParser(path)
+		mesh = MeshObject(parser)
+		mesh.generate_grid()
+		velocityField = FieldArray(FieldNames.VELOCITY_NEW.value, DimType.VECTOR, mesh.get_num_cells())
+		velocityField.initialize_constant(0.)  # Initialize field to zero
+		system = LinearSystem(mesh.get_num_cells()*MAX_DIM, "test_system", sparse=False)
+		diffusionVectorAlg = AssembleInteriorVectorDiffusionToLinSystem("Pressure_diffusion_test", mesh.get_num_cells(), velocityField, system, mesh, diffusionCoeff=1.0)
+		diffusionVectorAlgLeft = AssembleDirichletBoundaryVectorDiffusionToLinSystem("Pressure_diffusion_test_boundary", mesh.get_num_cells(), velocityField, system, mesh, boundaryType=Boundary.LEFT, boundaryValue=leftValue, diffusionCoeff=1.0)
+		diffusionVectorAlgRight = AssembleDirichletBoundaryVectorDiffusionToLinSystem("Pressure_diffusion_test_boundary", mesh.get_num_cells(), velocityField, system, mesh, boundaryType=Boundary.RIGHT, boundaryValue=rightValue, diffusionCoeff=1.0)
+		allAlgs = [diffusionVectorAlg, diffusionVectorAlgLeft, diffusionVectorAlgRight]
+		for alg in allAlgs:
+			alg.zero()
+		for alg in allAlgs:
+			alg.assemble()
+		dU = system.solve()
+		
+        ## we should know what the RHS value should be on the boundary for this setup....
+		rightBoundaryFaceCells =  mesh.get_right_boundary()
+		faceArea = rightBoundaryFaceCells[0].get_area()
+		rightBoundaryCellRHS = [(rightValue[i] - 0)/(faceArea/2)*faceArea for i in range(MAX_DIM)]
+		for face in rightBoundaryFaceCells:
+			leftCellID = face.get_left_cell()
+			for comp in range(MAX_DIM):
+				self.assertAlmostEqual(system.get_rhs()[leftCellID*MAX_DIM + comp], rightBoundaryCellRHS[comp], places=5)
+
+		leftBoundaryFaceCells =  mesh.get_left_boundary()
+		leftBoundaryCellRHS = [-(0 - leftValue[i])/(faceArea/2)*faceArea for i in range(MAX_DIM)] # normal points in negative direction for left boundary
+		for face in leftBoundaryFaceCells:
+			leftCellID = face.get_left_cell()
+			for comp in range(MAX_DIM):
+				self.assertAlmostEqual(system.get_rhs()[leftCellID*MAX_DIM + comp], leftBoundaryCellRHS[comp], places=5)
+		
+        # linear profile for dP, our 
+		for cell in mesh.get_cells():
+			cellID = cell.get_flat_id()
+			slope = [(rightValue[i]-leftValue[i])/1.0 for i in range(MAX_DIM)]
+			expectedValue = [cell.get_centroid()[0]*slope[i] + leftValue[i] for i in range(MAX_DIM)]  # Linear profile from rightValue to leftValue across the domain
+			for comp in range(MAX_DIM):
+				self.assertAlmostEqual(dU[cellID*MAX_DIM + comp], expectedValue[comp], places=5)
