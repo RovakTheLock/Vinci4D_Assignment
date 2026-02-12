@@ -110,6 +110,22 @@ class TestFieldArray(unittest.TestCase):
         # Verify all values are now 3.0 (1.0 + 2.0)
         expected = np.full(num_cells * 2, 3.0)
         np.testing.assert_array_equal(velocity.get_data(), expected)
+    def test_vector_array_copy_to(self):
+        """Test copy_to method for velocity field"""
+        num_cells = 100
+        expectedValue = 123.456
+        velocity_source = FieldArray(FieldNames.VELOCITY_NEW.value, DimType.VECTOR, num_cells)
+        velocity_dest = FieldArray(FieldNames.VELOCITY_OLD.value, DimType.VECTOR, num_cells)
+        
+        # Initialize source velocity with some values
+        velocity_source.initialize_constant(expectedValue)
+        
+        # Copy to destination
+        velocity_source.copy_to(velocity_dest)
+        
+        # Verify that the data has been copied correctly
+        expected = np.full(num_cells * 2, expectedValue)  # Should be the same as source
+        np.testing.assert_array_equal(velocity_dest.get_data(), expected)
 
 
 

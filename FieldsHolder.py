@@ -57,6 +57,12 @@ class FieldArray:
     def increment(self, value, scale=1.0):
         """Increment the field data by a constant value"""
         self.data_ += value*scale
+    
+    def copy_to(self, other):
+        """Copy the data to another FieldArray (must be the same type and shape)"""
+        assert self.fieldType_ == other.fieldType_, "Can only copy fields of the same type"
+        assert self.data_.shape == other.data_.shape, "Can only copy fields with the same shape"
+        np.copyto(other.data_, self.data_)
 
     def swap_fields(self, other):
         """Swap the data arrays with another FieldArray (useful for time-stepping)"""
