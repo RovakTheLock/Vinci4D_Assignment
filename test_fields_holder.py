@@ -95,6 +95,23 @@ class TestFieldArray(unittest.TestCase):
         np.testing.assert_array_equal(velocity_new.get_data(), expected_new)
         np.testing.assert_array_equal(velocity_old.get_data(), expected_old)
 
+    def test_vector_array_velocity_increment(self):
+        """Test increment method for velocity field"""
+        num_cells = 100
+        velocity = FieldArray(FieldNames.VELOCITY_NEW.value, DimType.VECTOR, num_cells)
+        
+        # Initialize velocity with some values
+        velocity.initialize_constant(1.0)
+        
+        # Increment by a constant value
+        increment_value = 2.0
+        velocity.increment(increment_value, scale=1.0)
+        
+        # Verify all values are now 3.0 (1.0 + 2.0)
+        expected = np.full(num_cells * 2, 3.0)
+        np.testing.assert_array_equal(velocity.get_data(), expected)
+
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -54,6 +54,10 @@ class FieldArray:
         """Initialize the field data with a constant value"""
         self.data_.fill(value)
 
+    def increment(self, value, scale=1.0):
+        """Increment the field data by a constant value"""
+        self.data_ += value*scale
+
     def swap_fields(self, other):
         """Swap the data arrays with another FieldArray (useful for time-stepping)"""
         assert self.fieldType_ == other.fieldType_, "Can only swap fields of the same type"
