@@ -43,12 +43,12 @@ class TestOperations(unittest.TestCase):
 		pressureField = FieldArray(FieldNames.PRESSURE.value, DimType.SCALAR, mesh.get_num_cells())
 		pressureField.initialize_constant(0.)  # Initialize pressure field to zero
 		system = LinearSystem(mesh.get_num_cells(), "test_system", sparse=False)
-		diffusionScalarAlg = AssembleInteriorScalarDiffusionToLinSystem("Pressure_diffusion_test", mesh.get_num_cells(), pressureField, system, mesh, diffusionCoeff=1.0)
+		diffusionScalarAlg = AssembleInteriorScalarDiffusionToLinSystem("Pressure_diffusion_test", pressureField, system, mesh, diffusionCoeff=1.0)
 		diffusionScalarAlg.assemble()
 		
         # The boundary isn't set up, but we know the center interior cell should look like  [ 0. -1.  0. -1.  4. -1.  0. -1.  0.] from a finite difference perspective.
 		cellIndexCheck = 4
-		exactDiffComponent = [0.0, -1.0, 0.0, -1.0, 4.0, -1.0, 0.0, -1.0, 0.0]
+		exactDiffComponent = [0.0, 1.0, 0.0, 1.0, -4.0, 1.0, 0.0, 1.0, 0.0]
 		for i in range(mesh.get_num_cells()):
 			centerCellValue_i = system.get_lhs()[cellIndexCheck, i]
 			self.assertAlmostEqual(centerCellValue_i, exactDiffComponent[i], places=5)	
@@ -76,9 +76,9 @@ class TestOperations(unittest.TestCase):
 		pressureField = FieldArray(FieldNames.PRESSURE.value, DimType.SCALAR, mesh.get_num_cells())
 		pressureField.initialize_constant(0.)  # Initialize pressure field to zero
 		system = LinearSystem(mesh.get_num_cells(), "test_system", sparse=False)
-		diffusionScalarAlg = AssembleInteriorScalarDiffusionToLinSystem("Pressure_diffusion_test", mesh.get_num_cells(), pressureField, system, mesh, diffusionCoeff=1.0)
-		diffusionScalarAlgLeft = AssembleDirichletBoundaryScalarDiffusionToLinSystem("Pressure_diffusion_test_boundary", mesh.get_num_cells(), pressureField, system, mesh, boundaryType=Boundary.LEFT, boundaryValue=leftValue, diffusionCoeff=1.0)
-		diffusionScalarAlgRight = AssembleDirichletBoundaryScalarDiffusionToLinSystem("Pressure_diffusion_test_boundary", mesh.get_num_cells(), pressureField, system, mesh, boundaryType=Boundary.RIGHT, boundaryValue=rightValue, diffusionCoeff=1.0)
+		diffusionScalarAlg = AssembleInteriorScalarDiffusionToLinSystem("Pressure_diffusion_test", pressureField, system, mesh, diffusionCoeff=1.0)
+		diffusionScalarAlgLeft = AssembleDirichletBoundaryScalarDiffusionToLinSystem("Pressure_diffusion_test_boundary", pressureField, system, mesh, boundaryType=Boundary.LEFT, boundaryValue=leftValue, diffusionCoeff=1.0)
+		diffusionScalarAlgRight = AssembleDirichletBoundaryScalarDiffusionToLinSystem("Pressure_diffusion_test_boundary", pressureField, system, mesh, boundaryType=Boundary.RIGHT, boundaryValue=rightValue, diffusionCoeff=1.0)
 		allAlgs = [diffusionScalarAlg, diffusionScalarAlgLeft, diffusionScalarAlgRight]
 		for alg in allAlgs:
 			alg.zero()
@@ -89,7 +89,7 @@ class TestOperations(unittest.TestCase):
         ## we should know what the RHS value should be on the boundary for this setup....
 		rightBoundaryFaceCells =  mesh.get_right_boundary()
 		faceArea = rightBoundaryFaceCells[0].get_area()
-		rightBoundaryCellRHS = (rightValue - 0)/(faceArea/2)*faceArea
+		rightBoundaryCellRHS = -(rightValue - 0)/(faceArea/2)*faceArea
 		for face in rightBoundaryFaceCells:
 			rightCellID = face.get_right_cell()
 			leftCellID = face.get_left_cell()
@@ -126,9 +126,9 @@ class TestOperations(unittest.TestCase):
 		pressureField = FieldArray(FieldNames.PRESSURE.value, DimType.SCALAR, mesh.get_num_cells())
 		pressureField.initialize_constant(0.)  # Initialize pressure field to zero
 		system = LinearSystem(mesh.get_num_cells(), "test_system", sparse=False)
-		diffusionScalarAlg = AssembleInteriorScalarDiffusionToLinSystem("Pressure_diffusion_test", mesh.get_num_cells(), pressureField, system, mesh, diffusionCoeff=1.0)
-		diffusionScalarAlgLeft = AssembleDirichletBoundaryScalarDiffusionToLinSystem("Pressure_diffusion_test_boundary", mesh.get_num_cells(), pressureField, system, mesh, boundaryType=Boundary.LEFT, boundaryValue=leftValue, diffusionCoeff=1.0)
-		diffusionScalarAlgRight = AssembleDirichletBoundaryScalarDiffusionToLinSystem("Pressure_diffusion_test_boundary", mesh.get_num_cells(), pressureField, system, mesh, boundaryType=Boundary.RIGHT, boundaryValue=rightValue, diffusionCoeff=1.0)
+		diffusionScalarAlg = AssembleInteriorScalarDiffusionToLinSystem("Pressure_diffusion_test", pressureField, system, mesh, diffusionCoeff=1.0)
+		diffusionScalarAlgLeft = AssembleDirichletBoundaryScalarDiffusionToLinSystem("Pressure_diffusion_test_boundary", pressureField, system, mesh, boundaryType=Boundary.LEFT, boundaryValue=leftValue, diffusionCoeff=1.0)
+		diffusionScalarAlgRight = AssembleDirichletBoundaryScalarDiffusionToLinSystem("Pressure_diffusion_test_boundary", pressureField, system, mesh, boundaryType=Boundary.RIGHT, boundaryValue=rightValue, diffusionCoeff=1.0)
 		allAlgs = [diffusionScalarAlg, diffusionScalarAlgLeft, diffusionScalarAlgRight]
 		for alg in allAlgs:
 			alg.zero()
@@ -139,13 +139,13 @@ class TestOperations(unittest.TestCase):
         ## we should know what the RHS value should be on the boundary for this setup....
 		rightBoundaryFaceCells =  mesh.get_right_boundary()
 		faceArea = rightBoundaryFaceCells[0].get_area()
-		rightBoundaryCellRHS = (rightValue - 0)/(faceArea/2)*faceArea
+		rightBoundaryCellRHS = -(rightValue - 0)/(faceArea/2)*faceArea
 		for face in rightBoundaryFaceCells:
 			leftCellID = face.get_left_cell()
 			self.assertAlmostEqual(system.get_rhs()[leftCellID], rightBoundaryCellRHS, places=5)
 
 		leftBoundaryFaceCells =  mesh.get_left_boundary()
-		leftBoundaryCellRHS = -(0 - leftValue)/(faceArea/2)*faceArea # normal points in negative direction for left boundary
+		leftBoundaryCellRHS = (0 - leftValue)/(faceArea/2)*faceArea # normal points in negative direction for left boundary
 		for face in leftBoundaryFaceCells:
 			leftCellID = face.get_left_cell()
 			self.assertAlmostEqual(system.get_rhs()[leftCellID], leftBoundaryCellRHS, places=5)
@@ -180,9 +180,9 @@ class TestOperations(unittest.TestCase):
 		pressureField = FieldArray(FieldNames.PRESSURE.value, DimType.SCALAR, mesh.get_num_cells())
 		pressureField.initialize_constant(0.)  # Initialize pressure field to zero
 		system = LinearSystem(mesh.get_num_cells(), "test_system", sparse=False)
-		diffusionScalarAlg = AssembleInteriorScalarDiffusionToLinSystem("Pressure_diffusion_test", mesh.get_num_cells(), pressureField, system, mesh, diffusionCoeff=1.0)
-		diffusionScalarAlgLeft = AssembleDirichletBoundaryScalarDiffusionToLinSystem("Pressure_diffusion_test_boundary", mesh.get_num_cells(), pressureField, system, mesh, boundaryType=Boundary.TOP, boundaryValue=topValue, diffusionCoeff=1.0)
-		diffusionScalarAlgRight = AssembleDirichletBoundaryScalarDiffusionToLinSystem("Pressure_diffusion_test_boundary", mesh.get_num_cells(), pressureField, system, mesh, boundaryType=Boundary.BOTTOM, boundaryValue=bottomValue, diffusionCoeff=1.0)
+		diffusionScalarAlg = AssembleInteriorScalarDiffusionToLinSystem("Pressure_diffusion_test", pressureField, system, mesh, diffusionCoeff=1.0)
+		diffusionScalarAlgLeft = AssembleDirichletBoundaryScalarDiffusionToLinSystem("Pressure_diffusion_test_boundary", pressureField, system, mesh, boundaryType=Boundary.TOP, boundaryValue=topValue, diffusionCoeff=1.0)
+		diffusionScalarAlgRight = AssembleDirichletBoundaryScalarDiffusionToLinSystem("Pressure_diffusion_test_boundary", pressureField, system, mesh, boundaryType=Boundary.BOTTOM, boundaryValue=bottomValue, diffusionCoeff=1.0)
 		allAlgs = [diffusionScalarAlg, diffusionScalarAlgLeft, diffusionScalarAlgRight]
 		for alg in allAlgs:
 			alg.zero()
@@ -193,14 +193,14 @@ class TestOperations(unittest.TestCase):
         ## we should know what the RHS value should be on the boundary for this setup....
 		bottomBoundaryFaceCells =  mesh.get_bottom_boundary()
 		faceArea = bottomBoundaryFaceCells[0].get_area()
-		bottomBoundaryCellRHS = -(0 - bottomValue)/(faceArea/2)*faceArea
+		bottomBoundaryCellRHS = (0 - bottomValue)/(faceArea/2)*faceArea
 		for face in bottomBoundaryFaceCells:
 			leftCellID = face.get_left_cell()
 			self.assertAlmostEqual(system.get_rhs()[leftCellID], bottomBoundaryCellRHS, places=5)
 			
 		topBoundaryFaceCells =  mesh.get_top_boundary()
 		faceArea = topBoundaryFaceCells[0].get_area()
-		topBoundaryCellRHS = (topValue - 0)/(faceArea/2)*faceArea
+		topBoundaryCellRHS = -(topValue - 0)/(faceArea/2)*faceArea
 		for face in topBoundaryFaceCells:
 			leftCellID = face.get_left_cell()
 			self.assertAlmostEqual(system.get_rhs()[leftCellID], topBoundaryCellRHS, places=5)
@@ -225,7 +225,7 @@ class TestOperations(unittest.TestCase):
 		}
 		dt = 1.0e-3
 		exactVolume = 1.0/(cells_x*cells_y)
-		expectedValue = exactVolume/dt
+		expectedValue = -exactVolume/dt
 		path = os.path.join(self.tmpdir, 'mesh.yaml')
 		with open(path, 'w') as f:
 			yaml.safe_dump(cfg, f)
@@ -236,7 +236,7 @@ class TestOperations(unittest.TestCase):
 		velocityNp1 = FieldArray(FieldNames.VELOCITY_NEW.value, DimType.VECTOR, mesh.get_num_cells())
 		velocityN = FieldArray(FieldNames.VELOCITY_OLD.value, DimType.VECTOR, mesh.get_num_cells())
 		system = LinearSystem(mesh.get_num_cells()*MAX_DIM, "test_system", sparse=False)
-		timeTermAlg = AssembleCellVectorTimeTerm("Velocity_time_term", mesh.get_num_cells(), velocityNp1, velocityN, system, mesh, dt)
+		timeTermAlg = AssembleCellVectorTimeTerm("Velocity_time_term", velocityNp1, velocityN, system, mesh, dt)
 		timeTermAlg.zero()
 		timeTermAlg.assemble()
 		for cell in mesh.get_cells():
@@ -268,9 +268,9 @@ class TestOperations(unittest.TestCase):
 		velocityField = FieldArray(FieldNames.VELOCITY_NEW.value, DimType.VECTOR, mesh.get_num_cells())
 		velocityField.initialize_constant(0.)  # Initialize field to zero
 		system = LinearSystem(mesh.get_num_cells()*MAX_DIM, "test_system", sparse=False)
-		diffusionVectorAlg = AssembleInteriorVectorDiffusionToLinSystem("Pressure_diffusion_test", mesh.get_num_cells(), velocityField, system, mesh, diffusionCoeff=1.0)
-		diffusionVectorAlgLeft = AssembleDirichletBoundaryVectorDiffusionToLinSystem("Pressure_diffusion_test_boundary", mesh.get_num_cells(), velocityField, system, mesh, boundaryType=Boundary.LEFT, boundaryValue=leftValue, diffusionCoeff=1.0)
-		diffusionVectorAlgRight = AssembleDirichletBoundaryVectorDiffusionToLinSystem("Pressure_diffusion_test_boundary", mesh.get_num_cells(), velocityField, system, mesh, boundaryType=Boundary.RIGHT, boundaryValue=rightValue, diffusionCoeff=1.0)
+		diffusionVectorAlg = AssembleInteriorVectorDiffusionToLinSystem("Velocity_diffusion_test", velocityField, system, mesh, diffusionCoeff=1.0)
+		diffusionVectorAlgLeft = AssembleDirichletBoundaryVectorDiffusionToLinSystem("Velocity_diffusion_test_boundary", velocityField, system, mesh, boundaryType=Boundary.LEFT, boundaryValue=leftValue, diffusionCoeff=1.0)
+		diffusionVectorAlgRight = AssembleDirichletBoundaryVectorDiffusionToLinSystem("Velocity_diffusion_test_boundary", velocityField, system, mesh, boundaryType=Boundary.RIGHT, boundaryValue=rightValue, diffusionCoeff=1.0)
 		allAlgs = [diffusionVectorAlg, diffusionVectorAlgLeft, diffusionVectorAlgRight]
 		for alg in allAlgs:
 			alg.zero()
@@ -281,14 +281,14 @@ class TestOperations(unittest.TestCase):
         ## we should know what the RHS value should be on the boundary for this setup....
 		rightBoundaryFaceCells =  mesh.get_right_boundary()
 		faceArea = rightBoundaryFaceCells[0].get_area()
-		rightBoundaryCellRHS = [(rightValue[i] - 0)/(faceArea/2)*faceArea for i in range(MAX_DIM)]
+		rightBoundaryCellRHS = [-(rightValue[i] - 0)/(faceArea/2)*faceArea for i in range(MAX_DIM)]
 		for face in rightBoundaryFaceCells:
 			leftCellID = face.get_left_cell()
 			for comp in range(MAX_DIM):
 				self.assertAlmostEqual(system.get_rhs()[leftCellID*MAX_DIM + comp], rightBoundaryCellRHS[comp], places=5)
 
 		leftBoundaryFaceCells =  mesh.get_left_boundary()
-		leftBoundaryCellRHS = [-(0 - leftValue[i])/(faceArea/2)*faceArea for i in range(MAX_DIM)] # normal points in negative direction for left boundary
+		leftBoundaryCellRHS = [(0 - leftValue[i])/(faceArea/2)*faceArea for i in range(MAX_DIM)] # normal points in negative direction for left boundary
 		for face in leftBoundaryFaceCells:
 			leftCellID = face.get_left_cell()
 			for comp in range(MAX_DIM):
@@ -325,9 +325,9 @@ class TestOperations(unittest.TestCase):
 		velocityField = FieldArray(FieldNames.VELOCITY_NEW.value, DimType.VECTOR, mesh.get_num_cells())
 		velocityField.initialize_constant(0.)  # Initialize field to zero
 		system = LinearSystem(mesh.get_num_cells()*MAX_DIM, "test_system", sparse=False)
-		diffusionVectorAlg = AssembleInteriorVectorDiffusionToLinSystem("Pressure_diffusion_test", mesh.get_num_cells(), velocityField, system, mesh, diffusionCoeff=1.0)
-		diffusionVectorAlgLeft = AssembleDirichletBoundaryVectorDiffusionToLinSystem("Pressure_diffusion_test_boundary", mesh.get_num_cells(), velocityField, system, mesh, boundaryType=Boundary.LEFT, boundaryValue=leftValue, diffusionCoeff=1.0)
-		diffusionVectorAlgRight = AssembleDirichletBoundaryVectorDiffusionToLinSystem("Pressure_diffusion_test_boundary", mesh.get_num_cells(), velocityField, system, mesh, boundaryType=Boundary.RIGHT, boundaryValue=rightValue, diffusionCoeff=1.0)
+		diffusionVectorAlg = AssembleInteriorVectorDiffusionToLinSystem("Velocity_diffusion_test", velocityField, system, mesh, diffusionCoeff=1.0)
+		diffusionVectorAlgLeft = AssembleDirichletBoundaryVectorDiffusionToLinSystem("Velocity_diffusion_test_boundary", velocityField, system, mesh, boundaryType=Boundary.LEFT, boundaryValue=leftValue, diffusionCoeff=1.0)
+		diffusionVectorAlgRight = AssembleDirichletBoundaryVectorDiffusionToLinSystem("Velocity_diffusion_test_boundary", velocityField, system, mesh, boundaryType=Boundary.RIGHT, boundaryValue=rightValue, diffusionCoeff=1.0)
 		allAlgs = [diffusionVectorAlg, diffusionVectorAlgLeft, diffusionVectorAlgRight]
 		for alg in allAlgs:
 			alg.zero()
@@ -338,14 +338,14 @@ class TestOperations(unittest.TestCase):
         ## we should know what the RHS value should be on the boundary for this setup....
 		rightBoundaryFaceCells =  mesh.get_right_boundary()
 		faceArea = rightBoundaryFaceCells[0].get_area()
-		rightBoundaryCellRHS = [(rightValue[i] - 0)/(faceArea/2)*faceArea for i in range(MAX_DIM)]
+		rightBoundaryCellRHS = [-(rightValue[i] - 0)/(faceArea/2)*faceArea for i in range(MAX_DIM)]
 		for face in rightBoundaryFaceCells:
 			leftCellID = face.get_left_cell()
 			for comp in range(MAX_DIM):
 				self.assertAlmostEqual(system.get_rhs()[leftCellID*MAX_DIM + comp], rightBoundaryCellRHS[comp], places=5)
 
 		leftBoundaryFaceCells =  mesh.get_left_boundary()
-		leftBoundaryCellRHS = [-(0 - leftValue[i])/(faceArea/2)*faceArea for i in range(MAX_DIM)] # normal points in negative direction for left boundary
+		leftBoundaryCellRHS = [(0 - leftValue[i])/(faceArea/2)*faceArea for i in range(MAX_DIM)] # normal points in negative direction for left boundary
 		for face in leftBoundaryFaceCells:
 			leftCellID = face.get_left_cell()
 			for comp in range(MAX_DIM):
@@ -392,7 +392,7 @@ class TestOperations(unittest.TestCase):
 		massFluxAlg.compute_mass_flux()
 
 		system = LinearSystem(mesh.get_num_cells()*MAX_DIM, "test_system", sparse=False)
-		advectionVectorAlg = AssembleInteriorVectorAdvectionToLinSystem("Velocity_advection_test", mesh.get_num_cells(), velocityField, system, mesh)
+		advectionVectorAlg = AssembleInteriorVectorAdvectionToLinSystem("Velocity_advection_test", velocityField, system, mesh)
 		allAlgs = [advectionVectorAlg]
 		for alg in allAlgs:
 			alg.zero()
