@@ -40,6 +40,38 @@ class AssembleCellVectorTimeTerm(AssembleSystemBase):
                 self.linearSystem_.add_lhs(rowIndex, rowIndex, cellVolume/self.dt_)
                 self.linearSystem_.add_rhs(rowIndex, -value*cellVolume/self.dt_)
 
+class AssembleInteriorVectorAdvectionToLinSystem(AssembleSystemBase):
+    def __init__(self, name, numDof, fieldsHolder, linearSystem, meshObject, diffusionCoeff=1.0):
+        super().__init__(name, numDof, fieldsHolder, linearSystem)
+        self.myMeshObject_ = meshObject
+        self.diffusionCoeff_ = diffusionCoeff
+        assert fieldsHolder.get_type() == DimType.VECTOR, "AssembleInteriorVectorDiffusionToLinSystem requires a vector field"
+    def assemble(self):
+        # Loop over internal faces and assemble contributions to the linear system
+        for face in self.myMeshObject_.get_internal_faces():
+            leftCellID = face.get_left_cell()
+            rightCellID = face.get_right_cell()
+            faceFlux = face.massFlux_
+            mdot_L = (faceFlux + abs(faceFlux))/2.0
+            mdot_R = (faceFlux - abs(faceFlux))/2.0
+            fieldLeft = [self.fieldsHolder_.get_data()[leftCellID*MAX_DIM + i] for i in range(MAX_DIM)]
+            fieldRight = [self.fieldsHolder_.get_data()[rightCellID*MAX_DIM + i] for i in range(MAX_DIM)]
+            rhs = [fieldLeft[i]*mdot_L + fieldRight[i]*mdot_R for i in range(MAX_DIM)]
+#            if (leftCellID==0 and rightCellID==1):
+#                print(f"Face between cell {leftCellID} and cell {rightCellID} has flux {faceFlux}, mdot_L {mdot_L}, mdot_R {mdot_R}, fieldLeft {fieldLeft}, fieldRight {fieldRight}, rhs {rhs}")
+
+            # Add contribution to the RHS/LHS
+            for i in range(MAX_DIM):
+                self.linearSystem_.add_rhs(leftCellID*MAX_DIM + i, rhs[i])
+                self.linearSystem_.add_rhs(rightCellID*MAX_DIM + i, -rhs[i])
+                self.linearSystem_.add_lhs(leftCellID*MAX_DIM + i, leftCellID*MAX_DIM + i, -mdot_L)  
+                self.linearSystem_.add_lhs(leftCellID*MAX_DIM + i, rightCellID*MAX_DIM + i, -mdot_R)  
+                self.linearSystem_.add_lhs(rightCellID*MAX_DIM + i, leftCellID*MAX_DIM + i, mdot_L)  
+                self.linearSystem_.add_lhs(rightCellID*MAX_DIM + i, rightCellID*MAX_DIM + i, mdot_R)  
+
+    def __repr__(self):
+        return super().__repr__()
+
 
 class AssembleInteriorVectorDiffusionToLinSystem(AssembleSystemBase):
     def __init__(self, name, numDof, fieldsHolder, linearSystem, meshObject, diffusionCoeff=1.0):

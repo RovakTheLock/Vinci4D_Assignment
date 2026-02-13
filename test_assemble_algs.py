@@ -7,7 +7,9 @@ from YamlParser import InputConfigParser
 from MeshObject import MeshObject
 from QuadElement import Face, Cell
 from FieldsHolder import FieldArray, DimType, FieldNames, MAX_DIM
-from AssembleAlgorithms import AssembleInteriorScalarDiffusionToLinSystem, AssembleDirichletBoundaryScalarDiffusionToLinSystem, Boundary, AssembleCellVectorTimeTerm, AssembleInteriorVectorDiffusionToLinSystem, AssembleDirichletBoundaryVectorDiffusionToLinSystem
+from Operations import ComputeInteriorMassFlux, ComputeCellGradient
+from AssembleAlgorithms import AssembleInteriorScalarDiffusionToLinSystem, AssembleDirichletBoundaryScalarDiffusionToLinSystem, Boundary, \
+	AssembleCellVectorTimeTerm, AssembleInteriorVectorDiffusionToLinSystem, AssembleDirichletBoundaryVectorDiffusionToLinSystem, AssembleInteriorVectorAdvectionToLinSystem
 from LinearSystem import LinearSystem
 
 
@@ -356,3 +358,47 @@ class TestOperations(unittest.TestCase):
 			expectedValue = [cell.get_centroid()[0]*slope[i] + leftValue[i] for i in range(MAX_DIM)]  # Linear profile from rightValue to leftValue across the domain
 			for comp in range(MAX_DIM):
 				self.assertAlmostEqual(dU[cellID*MAX_DIM + comp], expectedValue[comp], places=5)
+
+	def test_3x3_interior_vector_advection(self):
+		cells_x = 3
+		cells_y = 3
+		cfg = {
+			'mesh_parameters': {
+				'x_range': [0, 1],
+				'y_range': [0, 1],
+				'num_cells_x': cells_x,
+				'num_cells_y': cells_y
+			}
+		}
+		path = os.path.join(self.tmpdir, 'mesh.yaml')
+		with open(path, 'w') as f:
+			yaml.safe_dump(cfg, f)
+
+		parser = InputConfigParser(path)
+		mesh = MeshObject(parser)
+		mesh.generate_grid()
+		velocityField = FieldArray(FieldNames.VELOCITY_NEW.value, DimType.VECTOR, mesh.get_num_cells())
+		pressureField = FieldArray(FieldNames.PRESSURE.value, DimType.SCALAR, mesh.get_num_cells())
+		velocityField.initialize_constant(0.)  # Initialize field to zero
+		pressureField.initialize_constant(0.)
+		for cell in mesh.get_cells():
+			cellID = cell.get_flat_id()
+			velocityField.get_data()[cellID*MAX_DIM] = 1.0  
+			velocityField.get_data()[cellID*MAX_DIM+1] = 1.0  
+		gradPressureField = FieldArray(FieldNames.GRAD_PRESSURE.value, DimType.VECTOR, mesh.get_num_cells())
+		gradient_op = ComputeCellGradient(mesh, pressureField, gradPressureField)
+		gradient_op.compute_scalar_gradient()
+		massFluxAlg = ComputeInteriorMassFlux(mesh, velocityField, pressureField, gradPressureField, dt=0.01)
+		massFluxAlg.compute_mass_flux()
+
+		system = LinearSystem(mesh.get_num_cells()*MAX_DIM, "test_system", sparse=False)
+		advectionVectorAlg = AssembleInteriorVectorAdvectionToLinSystem("Velocity_advection_test", mesh.get_num_cells(), velocityField, system, mesh)
+		allAlgs = [advectionVectorAlg]
+		for alg in allAlgs:
+			alg.zero()
+		for alg in allAlgs:
+			alg.assemble()
+		# make sure the lhs and rhs are consistent, should be the same with a reversed sign if this is a no flux BC
+		testLHS = system.get_lhs() @ velocityField.get_data()
+		for i in range(testLHS.shape[0]):
+			self.assertAlmostEqual(-testLHS[i], system.get_rhs()[i], places=5)
