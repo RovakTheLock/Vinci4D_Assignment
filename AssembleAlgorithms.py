@@ -1,5 +1,6 @@
 from LinearSystem import LinearSystem
-from FieldsHolder import FieldArray, DimType,MAX_DIM
+from FieldsHolder import FieldArray, DimType,MAX_DIM, FieldNames
+from MeshObject import MeshObject
 from enum import Enum
 
 class Boundary(Enum):
@@ -9,11 +10,12 @@ class Boundary(Enum):
     BOTTOM = 3
 
 class AssembleSystemBase:
-    def __init__(self, name, numDof, fieldsHolder, linearSystem):
+    def __init__(self, name, numDof, fieldsHolder, linearSystem, meshObject):
         self.name_ = name
         self.numDof_ = numDof
         self.fieldsHolder_ : FieldArray = fieldsHolder
         self.linearSystem_ : LinearSystem = linearSystem
+        self.myMeshObject_ : MeshObject = meshObject
     def zero(self):
         self.linearSystem_.zero()
     def assemble(self):
@@ -23,8 +25,7 @@ class AssembleSystemBase:
 
 class AssembleCellVectorTimeTerm(AssembleSystemBase):
     def __init__(self, name, numDof, fieldsHolderNew, fieldsHolderOld, linearSystem, meshObject, dt):
-        super().__init__(name, numDof, fieldsHolderNew, linearSystem)
-        self.myMeshObject_ = meshObject
+        super().__init__(name, numDof, fieldsHolderNew, linearSystem, meshObject)
         self.dt_ = dt
         self.fieldHolderOld_ = fieldsHolderOld
         assert fieldsHolderNew.get_type() == DimType.VECTOR, "AssembleCellVectorTimeTerm requires a vector field for state NEW"
@@ -42,10 +43,9 @@ class AssembleCellVectorTimeTerm(AssembleSystemBase):
 
 class AssembleInteriorVectorAdvectionToLinSystem(AssembleSystemBase):
     def __init__(self, name, numDof, fieldsHolder, linearSystem, meshObject, diffusionCoeff=1.0):
-        super().__init__(name, numDof, fieldsHolder, linearSystem)
-        self.myMeshObject_ = meshObject
+        super().__init__(name, numDof, fieldsHolder, linearSystem, meshObject)
         self.diffusionCoeff_ = diffusionCoeff
-        assert fieldsHolder.get_type() == DimType.VECTOR, "AssembleInteriorVectorDiffusionToLinSystem requires a vector field"
+        assert fieldsHolder.get_type() == DimType.VECTOR, "AssembleInteriorVectorAdvectionToLinSystem requires a vector field"
     def assemble(self):
         # Loop over internal faces and assemble contributions to the linear system
         for face in self.myMeshObject_.get_internal_faces():
@@ -75,8 +75,7 @@ class AssembleInteriorVectorAdvectionToLinSystem(AssembleSystemBase):
 
 class AssembleInteriorVectorDiffusionToLinSystem(AssembleSystemBase):
     def __init__(self, name, numDof, fieldsHolder, linearSystem, meshObject, diffusionCoeff=1.0):
-        super().__init__(name, numDof, fieldsHolder, linearSystem)
-        self.myMeshObject_ = meshObject
+        super().__init__(name, numDof, fieldsHolder, linearSystem, meshObject)
         self.diffusionCoeff_ = diffusionCoeff
         assert fieldsHolder.get_type() == DimType.VECTOR, "AssembleInteriorVectorDiffusionToLinSystem requires a vector field"
     def assemble(self):
@@ -107,12 +106,11 @@ class AssembleInteriorVectorDiffusionToLinSystem(AssembleSystemBase):
     
 class AssembleDirichletBoundaryVectorDiffusionToLinSystem(AssembleSystemBase):
     def __init__(self, name, numDof, fieldsHolder, linearSystem, meshObject, boundaryType, boundaryValue, diffusionCoeff=1.0):
-        super().__init__(name, numDof, fieldsHolder, linearSystem)
+        super().__init__(name, numDof, fieldsHolder, linearSystem, meshObject)
         assert type(boundaryType) == Boundary, "boundaryType must be an instance of the Boundary enum"
         assert fieldsHolder.get_type() == DimType.VECTOR, "AssembleDirichletBoundaryVectorDiffusionToLinSystem requires a vector field"
         assert type(boundaryValue) == list and len(boundaryValue) == MAX_DIM, "boundaryValue must be a list of length equal to the number of dimensions"
         self.myFaceIterable_ = None
-        self.myMeshObject_ = meshObject
         if boundaryType == Boundary.LEFT:
             self.myFaceIterable_ = meshObject.get_left_boundary()
         elif boundaryType == Boundary.RIGHT:
@@ -149,8 +147,7 @@ class AssembleDirichletBoundaryVectorDiffusionToLinSystem(AssembleSystemBase):
 
 class AssembleInteriorScalarDiffusionToLinSystem(AssembleSystemBase):
     def __init__(self, name, numDof, fieldsHolder, linearSystem, meshObject, diffusionCoeff=1.0):
-        super().__init__(name, numDof, fieldsHolder, linearSystem)
-        self.myMeshObject_ = meshObject
+        super().__init__(name, numDof, fieldsHolder, linearSystem, meshObject)
         self.diffusionCoeff_ = diffusionCoeff
         assert fieldsHolder.get_type() == DimType.SCALAR, "AssembleInteriorScalarDiffusionToLinSystem requires a scalar field"
     def assemble(self):
@@ -181,11 +178,10 @@ class AssembleInteriorScalarDiffusionToLinSystem(AssembleSystemBase):
     
 class AssembleDirichletBoundaryScalarDiffusionToLinSystem(AssembleSystemBase):
     def __init__(self, name, numDof, fieldsHolder, linearSystem, meshObject, boundaryType, boundaryValue, diffusionCoeff=1.0):
-        super().__init__(name, numDof, fieldsHolder, linearSystem)
+        super().__init__(name, numDof, fieldsHolder, linearSystem, meshObject)
         assert type(boundaryType) == Boundary, "boundaryType must be an instance of the Boundary enum"
         assert fieldsHolder.get_type() == DimType.SCALAR, "AssembleDirichletBoundaryScalarDiffusionToLinSystem requires a scalar field"
         self.myFaceIterable_ = None
-        self.myMeshObject_ = meshObject
         if boundaryType == Boundary.LEFT:
             self.myFaceIterable_ = meshObject.get_left_boundary()
         elif boundaryType == Boundary.RIGHT:
