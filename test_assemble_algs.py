@@ -227,6 +227,8 @@ class TestOperations(unittest.TestCase):
 		exactVolume = 1.0/(cells_x*cells_y)
 		expectedValue = -exactVolume/dt
 		path = os.path.join(self.tmpdir, 'mesh.yaml')
+		newValue=2
+		oldValue=0
 		with open(path, 'w') as f:
 			yaml.safe_dump(cfg, f)
 
@@ -235,6 +237,8 @@ class TestOperations(unittest.TestCase):
 		mesh.generate_grid()
 		velocityNp1 = FieldArray(FieldNames.VELOCITY_NEW.value, DimType.VECTOR, mesh.get_num_cells())
 		velocityN = FieldArray(FieldNames.VELOCITY_OLD.value, DimType.VECTOR, mesh.get_num_cells())
+		velocityNp1.initialize_constant(newValue)
+		velocityN.initialize_constant(oldValue)
 		system = LinearSystem(mesh.get_num_cells()*MAX_DIM, "test_system", sparse=False)
 		timeTermAlg = AssembleCellVectorTimeTerm("Velocity_time_term", velocityNp1, velocityN, system, mesh, dt)
 		timeTermAlg.zero()
@@ -244,6 +248,7 @@ class TestOperations(unittest.TestCase):
 			for comp in range(MAX_DIM):
 				rowIndex = cellID*MAX_DIM + comp
 				self.assertAlmostEqual(system.get_lhs()[rowIndex, rowIndex], expectedValue, places=5)
+				self.assertAlmostEqual(system.get_rhs()[rowIndex], -expectedValue*(newValue-oldValue), places=5)
 
 	def test_3x3_full_vector_diffusion_nonzero_x(self):
 		cells_x = 3
