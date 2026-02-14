@@ -3,6 +3,12 @@ from scipy.sparse import csr_matrix
 from scipy.linalg import solve
 from scipy.sparse.linalg import spsolve, gmres, bicgstab, LinearOperator, spilu
 
+class IterationCounter:
+    def __init__(self):
+        self.niter = 0
+    def __call__(self, rk):
+        self.niter += 1
+
 class LinearSystem:
     def __init__(self, num_dof, name, sparse=False):
         """
@@ -24,6 +30,9 @@ class LinearSystem:
             self.lhs = np.zeros((num_dof, num_dof))
         
         self.rhs = np.zeros(num_dof)
+    def get_name(self):
+        """Returns assigned name of linear system"""
+        return self.name_
     
     def add_lhs(self, row, col, value):
         """Add a value to the LHS matrix (cumulative sum)."""
@@ -76,6 +85,7 @@ class LinearSystem:
                 return solve(lhs, self.rhs)
         
         elif method == 'gmres':
+            counter = IterationCounter()
             # gmres returns (x, info); info == 0 means convergence
             ilu = spilu(self.get_lhs())  # Precompute ILU preconditioner for iterative solvers
             defaultPreconditioner = LinearOperator(self.lhs.shape,ilu.solve)

@@ -73,12 +73,14 @@ class AssembleInteriorVectorAdvectionToLinSystem(AssembleSystemBase):
 
             # Add contribution to the RHS/LHS
             for i in range(MAX_DIM):
-                self.linearSystem_.add_rhs(leftCellID*MAX_DIM + i, rhs[i])
-                self.linearSystem_.add_rhs(rightCellID*MAX_DIM + i, -rhs[i])
-                self.linearSystem_.add_lhs(leftCellID*MAX_DIM + i, leftCellID*MAX_DIM + i, -mdot_L)  
-                self.linearSystem_.add_lhs(leftCellID*MAX_DIM + i, rightCellID*MAX_DIM + i, -mdot_R)  
-                self.linearSystem_.add_lhs(rightCellID*MAX_DIM + i, leftCellID*MAX_DIM + i, mdot_L)  
-                self.linearSystem_.add_lhs(rightCellID*MAX_DIM + i, rightCellID*MAX_DIM + i, mdot_R)  
+                rowIndexLeft = leftCellID*MAX_DIM+i
+                rowIndexRight = rightCellID*MAX_DIM+i
+                self.linearSystem_.add_rhs(rowIndexLeft, rhs[i])
+                self.linearSystem_.add_rhs(rowIndexRight, -rhs[i])
+                self.linearSystem_.add_lhs(rowIndexLeft, rowIndexLeft, -mdot_L)  
+                self.linearSystem_.add_lhs(rowIndexLeft, rowIndexRight, -mdot_R)  
+                self.linearSystem_.add_lhs(rowIndexRight, rowIndexLeft, mdot_L)  
+                self.linearSystem_.add_lhs(rowIndexRight, rowIndexLeft, mdot_R)  
 
     def __repr__(self):
         return super().__repr__()
@@ -157,8 +159,9 @@ class AssembleDirichletBoundaryVectorDiffusionToLinSystem(AssembleSystemBase):
                 self.linearSystem_.add_lhs(cellID*MAX_DIM+i, cellID*MAX_DIM+i, -lhsFactor)
 
 class AssembleInteriorPressurePoissonSystem(AssembleSystemBase):
-    def __init__(self, name, fieldsHolder, linearSystem, meshObject):
+    def __init__(self, name, fieldsHolder, linearSystem, meshObject, dt):
         super().__init__(name, fieldsHolder, linearSystem, meshObject)
+        self.dt_ = dt
         assert fieldsHolder.get_type() == DimType.SCALAR, "AssembleInteriorPressurePoissonSystem requires a scalar field"
         assert fieldsHolder.get_name() == FieldNames.PRESSURE.value, "AssembleInteriorPressurePoissonSystem requires a field named 'Pressure' for the pressure values"
     def assemble(self):
@@ -172,7 +175,7 @@ class AssembleInteriorPressurePoissonSystem(AssembleSystemBase):
             cellRight = self.myMeshObject_.get_cell_by_flat_id(rightCellID)
             distance = [cellRight.get_centroid()[i] - cellLeft.get_centroid()[i] for i in range(MAX_DIM)]  # Vector from left cell to right cell
             normalLength = normal[0]*distance[0] + normal[1]*distance[1]  # Dot product of normal and distance vector
-            lhsFactor = faceArea/normalLength
+            lhsFactor = self.dt_*faceArea/normalLength
             massFlux = face.massFlux_
 
             # Add contribution to the RHS

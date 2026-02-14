@@ -10,6 +10,26 @@ class ComputeInteriorMassFlux:
         self.pressure_field_array_ : FieldArray = pressure_field_array
         self.cell_pressure_gradient_field_array_ : FieldArray = cell_pressure_gradient_field_array # assume cell gradient has already been computed. . .
         self.dt_ = dt
+        self.scaling_ = self.dt_
+    def correct_mass_flux(self,dP : FieldArray):
+        for face in self.myMeshObject_.get_internal_faces():
+            leftCellID = face.get_left_cell()
+            rightCellID = face.get_right_cell()
+
+
+            # Get the pressure valuse for the left and right cells
+            left_dP = dP.get_data()[leftCellID]
+            right_dP = dP.get_data()[rightCellID]
+            normalVector = face.get_normal_vector()
+            cellLeft = self.myMeshObject_.get_cell_by_flat_id(leftCellID)
+            cellRight = self.myMeshObject_.get_cell_by_flat_id(rightCellID)
+            distance = 0.0
+            for i in range(MAX_DIM):
+                distance += (cellRight.get_centroid()[i] - cellLeft.get_centroid()[i])*normalVector[i]
+            faceGradPressureCorrection_dot_n = (right_dP - left_dP)/distance
+            # Store the computed mass flux in the face object (you may want to have a separate field array for this in practice)
+            face.massFlux_ -= self.scaling_ * faceGradPressureCorrection_dot_n
+
     def compute_mass_flux(self):
         """Compute the mass flux across each face in the mesh based on the velocity field and pressure gradient"""
         for face in self.myMeshObject_.get_internal_faces():
@@ -47,11 +67,10 @@ class ComputeInteriorMassFlux:
             for i in range(MAX_DIM):
                 distance += (cellRight.get_centroid()[i] - cellLeft.get_centroid()[i])*normalVector[i]
             faceGradPressure_dot_n = (rightPressure - leftPressure)/distance
-            scaling = self.dt_
             u_dot_n = faceVelocity_x*normalVector[0] + faceVelocity_y*normalVector[1]
             cellGradP_dot_n = cellGradPressure_x*normalVector[0] + cellGradPressure_y*normalVector[1]
             # Compute mass flux as velocity dot normal times area of the face
-            mass_flux = (u_dot_n + scaling *((cellGradP_dot_n-faceGradPressure_dot_n))) * face.get_area()
+            mass_flux = (u_dot_n + self.scaling_ *((cellGradP_dot_n-faceGradPressure_dot_n))) * face.get_area()
             
             # Store the computed mass flux in the face object (you may want to have a separate field array for this in practice)
             face.massFlux_ = mass_flux
@@ -88,11 +107,7 @@ class ComputeCellGradient:
 
         for face in self.mesh_object_.get_boundary_faces():
             directionFactor = 1.0
-            if (face.get_left_cell() is not None):
-                cellID = face.get_left_cell()  # For boundary faces, only one cell contributes
-            else:
-                cellID = face.get_right_cell()
-                directionFactor = -1.0
+            cellID = face.get_left_cell()  # For boundary faces, only one cell contributes
             faceValue = self.field_array_.get_data()[cellID]  # For boundary faces, use the value from the single adjacent cell
 
 

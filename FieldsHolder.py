@@ -14,6 +14,8 @@ class FieldNames(Enum):
     VELOCITY_OLD = "velocity_n"
     VELOCITY_VERY_OLD = "velocity_nm1"
     MASS_FLUX_FACE = "mass_flux_face"
+    PRESSURE_CORRECTION = "pressure_correction"
+    GRAD_PRESSURE_CORRECTION = "grad_pressure_correction"
 
 class FieldArray:
     """
