@@ -15,6 +15,8 @@ class InputConfigParser:
         self.outputDirectory_ = None
         self.continuityTolerance_ = 1.0e-6
         self.momentumTolerance_ = 1.0e-6
+        self.numNonlinearIterations_ = 3
+        self.terminationTime_ = None
         self.parse_mesh_parameters()
         self.parse_simulation_settings()
 
@@ -53,8 +55,8 @@ class InputConfigParser:
         self.outputDirectory_ = simulation_settings.get('output_directory')
         self.continuityTolerance_ = simulation_settings.get('continuity_tolerance', self.continuityTolerance_)
         self.momentumTolerance_ = simulation_settings.get('momentum_tolerance', self.momentumTolerance_)
-    
-
+        self.numNonlinearIterations_ = simulation_settings.get('num_nonlinear_iterations', self.numNonlinearIterations_)
+        self.terminationTime_ = simulation_settings.get('termination_time', self.terminationTime_)
 
     def __repr__(self):
         return (
