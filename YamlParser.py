@@ -12,6 +12,7 @@ class InputConfigParser:
         self.CFL_ = None
         self.Re_ = None
         self.outputFrequency_ = None
+        self.outputDirectory_ = None
         self.continuityTolerance_ = None
         self.momentumTolerance_ = None
         self.parse_mesh_parameters()
@@ -49,6 +50,7 @@ class InputConfigParser:
         self.CFL_ = simulation_settings.get('CFL')
         self.Re_ = simulation_settings.get('Re')
         self.outputFrequency_ = simulation_settings.get('output_frequency')
+        self.outputDirectory_ = simulation_settings.get('output_directory')
         self.continuityTolerance_ = simulation_settings.get('continuity_tolerance')
         self.momentumTolerance_ = simulation_settings.get('momentum_tolerance')
     
@@ -65,6 +67,7 @@ class InputConfigParser:
             f"  CFL_={self.CFL_},\n"
             f"  Re_={self.Re_},\n"
             f"  outputFrequency_={self.outputFrequency_},\n"
+            f"  outputDirectory_='{self.outputDirectory_}',\n"
             f"  continuityTolerance_={self.continuityTolerance_},\n"
             f"  momentumTolerance_={self.momentumTolerance_},\n"
             f")"

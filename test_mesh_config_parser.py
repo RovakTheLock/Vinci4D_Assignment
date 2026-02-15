@@ -22,6 +22,7 @@ class TestMeshConfigParser(unittest.TestCase):
                 'CFL': 1.0,
                 'Re': 1000,
                 'output_frequency': 40,
+                'output_directory': './output',
                 'continuity_tolerance': 1.0e-6,
                 'momentum_tolerance': 1.0e-6
             }
@@ -171,6 +172,7 @@ class TestMeshConfigParser(unittest.TestCase):
         self.assertEqual(parser.outputFrequency_, 40)
         self.assertEqual(parser.continuityTolerance_, 1.0e-6)
         self.assertEqual(parser.momentumTolerance_, 1.0e-6)
+        self.assertEqual(parser.outputDirectory_, './output')
 
     def test_parse_simulation_settings_missing_simulation_key(self):
         """Test parsing when 'simulation' key is missing"""
@@ -190,6 +192,7 @@ class TestMeshConfigParser(unittest.TestCase):
         self.assertIsNone(parser.outputFrequency_)
         self.assertIsNone(parser.continuityTolerance_)
         self.assertIsNone(parser.momentumTolerance_)
+        self.assertIsNone(parser.outputDirectory_)
 
 
 if __name__ == '__main__':
