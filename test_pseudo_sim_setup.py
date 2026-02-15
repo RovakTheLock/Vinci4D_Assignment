@@ -9,47 +9,12 @@ from FieldsHolder import FieldArray, DimType, FieldNames, MAX_DIM
 from AssembleAlgorithms import Boundary, AssembleCellVectorTimeTerm, AssembleInteriorVectorDiffusionToLinSystem, AssembleInteriorPressurePoissonSystem, \
 	AssembleDirichletBoundaryVectorDiffusionToLinSystem, AssembleInteriorVectorAdvectionToLinSystem, AssembleCellVectorPressureGradientToLinSystem
 from LinearSystem import LinearSystem
-from Operations import ComputeInteriorMassFlux, ComputeCellGradient
+from Operations import ComputeInteriorMassFlux, ComputeCellGradient, CFLTimeStepCompute, LogObject, PerformanceTimer
 import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
 import sys
-import time
+import math
 
-class PerformanceTimer:
-	def __init__(self):
-		self.myStartTimer_ = 0.0
-		self.myEndTimer_ = 0.0
-		self.myEventName_ = None
-	def start_timer(self, eventName):
-		self.myEventName_ = eventName
-		self.myStartTimer_ = time.perf_counter()
-	def end_timer(self):
-		assert self.myEventName_ != None, "No event was started"
-		self.myEndTimer_ = time.perf_counter()
-		print(f"For event {self.myEventName_}, timer: {self.myEndTimer_ - self.myStartTimer_:.6f} seconds ")
-		self.myEventName_ = None
-
-
-class LogObject:
-	def __init__(self,systemVector):
-		self.mySystemVector_ : list[LinearSystem] = systemVector
-		self.myNonlinearResiduals_ = {}
-	def report_log(self, nonlinIterCounter):
-		print(f"For nonlinear iteration = {nonlinIterCounter}")
-		for i in range(len(self.mySystemVector_)):
-			system = self.mySystemVector_[i]
-			residual = np.linalg.norm(system.get_rhs())
-			print(f"\tFor system {system.get_name()}: RHS residual = {residual}")
-			self.myNonlinearResiduals_[system.name_] = residual
-	def get_residuals(self):
-		for i in range(len(self.mySystemVector_)):
-			system = self.mySystemVector_[i]
-			residual = np.linalg.norm(system.get_rhs())
-			self.myNonlinearResiduals_[system.name_] = residual
-		return self.myNonlinearResiduals_
-
-
-class TestOperations(unittest.TestCase):
+class TestSimulation(unittest.TestCase):
 	def setUp(self):
 		self.tmpdir = tempfile.mkdtemp()
 
@@ -63,30 +28,43 @@ class TestOperations(unittest.TestCase):
 		'''
 		test on a nxn grid for a lid-driven cavity setup.
 		'''
-		cells_x = 120 
-		cells_y = 120
+		cells_x = 10 
+		cells_y = 10
 		cfg = {
 			'mesh_parameters': {
 				'x_range': [0, 1],
 				'y_range': [0, 1],
 				'num_cells_x': cells_x,
 				'num_cells_y': cells_y
-			}
+			},
+            'simulation': {
+                'CFL': 1.0,
+                'Re': 10,
+                'output_frequency': 40,
+                'output_directory': './output',
+                'continuity_tolerance': 1.0e-6,
+                'momentum_tolerance': 1.0e-6,
+                'termination_time': 0.01,
+				'num_nonlinear_iterations': 15,
+            }
 		}
 		vTop = 1.0
 		topValue = [vTop,0.0]
 		rightValue = [0.0,0.0]
 		leftValue = [0.0,0.0]
 		bottomValue = [0.0,0.0]
-		Re = 100000
-		diffusionCoefficient = 1/Re 
 		path = os.path.join(self.tmpdir, 'mesh.yaml')
 		with open(path, 'w') as f:
 			yaml.safe_dump(cfg, f)
-
 		parser = InputConfigParser(path)
+		Re = parser.Re_
+		diffusionCoefficient = 1/Re 
 		mesh = MeshObject(parser)
 		mesh.generate_grid()
+
+		timeStepOp = CFLTimeStepCompute(mesh, parser.CFL_)
+		dt = timeStepOp.compute_time_step() #dt, for fast convergence, needs to be either Re*dx*dx/2 or dx/U
+
 		velocityNp1 = FieldArray(FieldNames.VELOCITY_NEW.value, DimType.VECTOR, mesh.get_num_cells())
 		velocityN = FieldArray(FieldNames.VELOCITY_OLD.value, DimType.VECTOR, mesh.get_num_cells())
 		pressureField = FieldArray(FieldNames.PRESSURE.value, DimType.SCALAR, mesh.get_num_cells())
@@ -98,7 +76,6 @@ class TestOperations(unittest.TestCase):
 		pressureField.initialize_constant(0.)  # Initialize field to zero
 		gradPressureField.initialize_constant(0.)  # Initialize field to zero
 		dPressure.initialize_constant(0.)  # Initialize field to zero
-		dt = 0.005 #dt, for fast convergence, needs to be either Re*dx*dx/2 or dx/U
 		velocitySystem = LinearSystem(mesh.get_num_cells()*MAX_DIM, "velocity_system", sparse=False)
 		pressureSystem = LinearSystem(mesh.get_num_cells(), "pressure_system", sparse=False)
 		timeTermAlg = AssembleCellVectorTimeTerm("Velocity_time_term", velocityNp1, velocityN, velocitySystem, mesh, dt)
@@ -119,19 +96,35 @@ class TestOperations(unittest.TestCase):
 
 		pressureCorrectionGradientOp = ComputeCellGradient(mesh, dPressure, grad_dPressure)
 		myLogger = LogObject([velocitySystem,pressureSystem])
-		directoryName = 'RESULTS'
-		numSteps = 2000
-		numNonlinearIterations = 10
-		alphaV = 1.0 # was 0.7
-		alphaP = 1.0 # was 0.3
-		tolerance = 1e-5
-		timeOutputFreq = 40
+		directoryName = parser.outputDirectory_
+		numSteps = math.ceil(parser.terminationTime_ / dt)
+		numNonlinearIterations = parser.numNonlinearIterations_
+		alphaV = 1.0
+		alphaP = 1.0
+		timeOutputFreq = parser.outputFrequency_
+
+		## pre-compute PPE matrix, can re-use it for this test problem
+		# Solve pressure system and do various updates
 		timer = PerformanceTimer()
+		timer.start_timer('Continuity assembly')
+		for alg in pressureSystemAlg:
+			alg.zero()
+		for alg in pressureSystemAlg:
+			alg.assemble()
+		timer.end_timer()
+
+		pressureSystem.get_lhs()[0,:] = 0
+		pressureSystem.get_lhs()[0,0] = 1.0
+		pressureSystem.get_rhs()[0] = 0
+		pressureSystem.cache_lu_preconditioner()
+
 		if not os.path.exists(directoryName):
 			os.makedirs(directoryName)
 			print(f"Created directory: {directoryName}")
 		else:
 			print("Directory already exists.")
+		print(f"Simulation termination time: {parser.terminationTime_}, time step: {dt}, number of steps: {numSteps}")
+		print("simulation starting...")
 		for t in range(numSteps):
 			print(f"t = {t}")
 			print("-------------------------------------------------------------------------------------------")
@@ -142,30 +135,26 @@ class TestOperations(unittest.TestCase):
 					alg.zero()
 				for alg in velocitySystemAlgs:
 					alg.assemble()
-				print("Finished assembly on momentum")
 				timer.end_timer()
+				timer.start_timer('Momentum solve')
 				dU = velocitySystem.solve(method='bicgstab')
-				print("Finished solve on momentum")
+				timer.end_timer()
 				normRHS = np.linalg.norm(velocitySystem.get_rhs())
 				velocityNp1.increment(dU, scale=alphaV)
 				massFluxAlg.compute_mass_flux()
 
 				# Solve pressure system and do various updates
+				timer.start_timer('Continuity assembly')
 				for alg in pressureSystemAlg:
-					alg.zero()
+					alg.zero_rhs()
 				for alg in pressureSystemAlg:
-					alg.assemble()
-				print("Finished assembly on continuity")
-				# fix one of the cells to 0 pressure to avoid singularity..
-				pressureSystem.get_lhs()[0,:] = 0
-				pressureSystem.get_lhs()[0,0] = 1.0
+					alg.assemble_rhs()
+				timer.end_timer()
 				pressureSystem.get_rhs()[0] = 0
-				if (t == 0):
-					pressureSystem.cache_lu_preconditioner()
 				timer.start_timer('Continuity solve')
 				dPressure.data_ = pressureSystem.solve(method='gmres') # being lazy here..need to expose the underlying member
 				timer.end_timer()
-				print("Finished solve on continuity")
+
 				pressureField.increment(dPressure.get_data(), scale=alphaP)
 				pressureCorrectionGradientOp.compute_scalar_gradient()
 				pressureGradientOp.compute_scalar_gradient()
@@ -173,7 +162,7 @@ class TestOperations(unittest.TestCase):
 				velocityNp1.increment(grad_dPressure.get_data(), scale=-alphaV*dt)
 				massFluxAlg.compute_mass_flux()
 				normDivU = np.linalg.norm(pressureSystem.get_rhs())
-				if (normDivU < tolerance and normRHS < tolerance):
+				if (normDivU < parser.momentumTolerance_ and normRHS < parser.continuityTolerance_):
 					residualDict = myLogger.get_residuals()
 					print(f"Momentum and pressure system converged on nonlinear iteration {iter+1}!")
 					for system,residual in residualDict.items():
@@ -199,8 +188,6 @@ class TestOperations(unittest.TestCase):
 				U = u_flat.reshape((cells_y,cells_x))
 				V = v_flat.reshape((cells_y,cells_x))
 				fig, ax = plt.subplots(figsize=(8, 6))
-				p_min=-0.25
-				p_max=0.25
 #				cp = ax.contourf(X,Y,P_grid,cmap='viridis',alpha=0.8)
 				cp = ax.contourf(X,Y,np.sqrt(U**2 + V**2),cmap='viridis',alpha=0.8)
 				cbar = plt.colorbar(cp)
