@@ -11,10 +11,10 @@ class InputConfigParser:
         self.numCellsX_ = None
         self.CFL_ = None
         self.Re_ = None
-        self.outputFrequency_ = None
+        self.outputFrequency_ = 100
         self.outputDirectory_ = None
-        self.continuityTolerance_ = None
-        self.momentumTolerance_ = None
+        self.continuityTolerance_ = 1.0e-6
+        self.momentumTolerance_ = 1.0e-6
         self.parse_mesh_parameters()
         self.parse_simulation_settings()
 
@@ -49,10 +49,10 @@ class InputConfigParser:
         simulation_settings = self.config_.get('simulation', {})
         self.CFL_ = simulation_settings.get('CFL')
         self.Re_ = simulation_settings.get('Re')
-        self.outputFrequency_ = simulation_settings.get('output_frequency')
+        self.outputFrequency_ = simulation_settings.get('output_frequency', self.outputFrequency_)
         self.outputDirectory_ = simulation_settings.get('output_directory')
-        self.continuityTolerance_ = simulation_settings.get('continuity_tolerance')
-        self.momentumTolerance_ = simulation_settings.get('momentum_tolerance')
+        self.continuityTolerance_ = simulation_settings.get('continuity_tolerance', self.continuityTolerance_)
+        self.momentumTolerance_ = simulation_settings.get('momentum_tolerance', self.momentumTolerance_)
     
 
 

@@ -189,9 +189,9 @@ class TestMeshConfigParser(unittest.TestCase):
 
         self.assertIsNone(parser.CFL_)
         self.assertIsNone(parser.Re_)
-        self.assertIsNone(parser.outputFrequency_)
-        self.assertIsNone(parser.continuityTolerance_)
-        self.assertIsNone(parser.momentumTolerance_)
+        self.assertEqual(parser.outputFrequency_, 100)
+        self.assertEqual(parser.continuityTolerance_, 1.0e-6)
+        self.assertEqual(parser.momentumTolerance_, 1.0e-6)
         self.assertIsNone(parser.outputDirectory_)
 
 
