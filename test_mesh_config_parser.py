@@ -17,6 +17,13 @@ class TestMeshConfigParser(unittest.TestCase):
                 'y_range': [0, 1],
                 'num_cells_x': 50,
                 'num_cells_y': 50
+            },
+            'simulation': {
+                'CFL': 1.0,
+                'Re': 1000,
+                'output_frequency': 40,
+                'continuity_tolerance': 1.0e-6,
+                'momentum_tolerance': 1.0e-6
             }
         }
 
@@ -152,6 +159,37 @@ class TestMeshConfigParser(unittest.TestCase):
         self.assertEqual(parser.yRange_, [0, 1])
         self.assertEqual(parser.numCellsX_, 50)
         self.assertEqual(parser.numCellsY_, 50)
+
+    # parse_simulation_settings tests
+    def test_parse_simulation_settings_valid_config(self):
+        """Test that parse_simulation_settings correctly parses simulation config"""
+        file_path = self._create_yaml_file("valid_sim_config.yaml", self.valid_config)
+        parser = InputConfigParser(file_path)
+
+        self.assertEqual(parser.CFL_, 1.0)
+        self.assertEqual(parser.Re_, 1000)
+        self.assertEqual(parser.outputFrequency_, 40)
+        self.assertEqual(parser.continuityTolerance_, 1.0e-6)
+        self.assertEqual(parser.momentumTolerance_, 1.0e-6)
+
+    def test_parse_simulation_settings_missing_simulation_key(self):
+        """Test parsing when 'simulation' key is missing"""
+        config_without_sim = {
+            'mesh_parameters': {
+                'x_range': [0, 1],
+                'y_range': [0, 1],
+                'num_cells_x': 50,
+                'num_cells_y': 50
+            }
+        }
+        file_path = self._create_yaml_file("no_sim_config.yaml", config_without_sim)
+        parser = InputConfigParser(file_path)
+
+        self.assertIsNone(parser.CFL_)
+        self.assertIsNone(parser.Re_)
+        self.assertIsNone(parser.outputFrequency_)
+        self.assertIsNone(parser.continuityTolerance_)
+        self.assertIsNone(parser.momentumTolerance_)
 
 
 if __name__ == '__main__':

@@ -3,3 +3,10 @@ mesh_parameters:
   y_range: [0, 1]
   num_cells_x: 50
   num_cells_y: 50
+
+simulation:
+  CFL: 1.0
+  Re: 1000
+  output_frequency: 40
+  continuity_tolerance: 1.0e-6
+  momentum_tolerance: 1.0e-6
