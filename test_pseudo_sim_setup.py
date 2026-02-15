@@ -13,6 +13,21 @@ from Operations import ComputeInteriorMassFlux, ComputeCellGradient
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import sys
+import time
+
+class PerformanceTimer:
+	def __init__(self):
+		self.myStartTimer_ = 0.0
+		self.myEndTimer_ = 0.0
+		self.myEventName_ = None
+	def start_timer(self, eventName):
+		self.myEventName_ = eventName
+		self.myStartTimer_ = time.perf_counter()
+	def end_timer(self):
+		assert self.myEventName_ != None, "No event was started"
+		self.myEndTimer_ = time.perf_counter()
+		print(f"For event {self.myEventName_}, timer: {self.myEndTimer_ - self.myStartTimer_:.6f} seconds ")
+		self.myEventName_ = None
 
 
 class LogObject:
@@ -111,6 +126,7 @@ class TestOperations(unittest.TestCase):
 		alphaP = 1.0 # was 0.3
 		tolerance = 1e-5
 		timeOutputFreq = 40
+		timer = PerformanceTimer()
 		if not os.path.exists(directoryName):
 			os.makedirs(directoryName)
 			print(f"Created directory: {directoryName}")
@@ -121,11 +137,15 @@ class TestOperations(unittest.TestCase):
 			print("-------------------------------------------------------------------------------------------")
 			for iter in range(numNonlinearIterations):
 				# Solve velocity system and do various updates.
+				timer.start_timer('Momentum assembly')
 				for alg in velocitySystemAlgs:
 					alg.zero()
 				for alg in velocitySystemAlgs:
 					alg.assemble()
+				print("Finished assembly on momentum")
+				timer.end_timer()
 				dU = velocitySystem.solve(method='bicgstab')
+				print("Finished solve on momentum")
 				normRHS = np.linalg.norm(velocitySystem.get_rhs())
 				velocityNp1.increment(dU, scale=alphaV)
 				massFluxAlg.compute_mass_flux()
@@ -135,13 +155,17 @@ class TestOperations(unittest.TestCase):
 					alg.zero()
 				for alg in pressureSystemAlg:
 					alg.assemble()
+				print("Finished assembly on continuity")
 				# fix one of the cells to 0 pressure to avoid singularity..
-#				pressureSystem.get_lhs()[0,:] = 0
-#				pressureSystem.get_lhs()[0,0] = 1.0
-#				pressureSystem.get_rhs()[0] = 0
+				pressureSystem.get_lhs()[0,:] = 0
+				pressureSystem.get_lhs()[0,0] = 1.0
+				pressureSystem.get_rhs()[0] = 0
 				if (t == 0):
 					pressureSystem.cache_lu_preconditioner()
+				timer.start_timer('Continuity solve')
 				dPressure.data_ = pressureSystem.solve(method='gmres') # being lazy here..need to expose the underlying member
+				timer.end_timer()
+				print("Finished solve on continuity")
 				pressureField.increment(dPressure.get_data(), scale=alphaP)
 				pressureCorrectionGradientOp.compute_scalar_gradient()
 				pressureGradientOp.compute_scalar_gradient()
