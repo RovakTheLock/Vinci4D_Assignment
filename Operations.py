@@ -1,6 +1,8 @@
 import numpy as np
 from FieldsHolder import FieldArray, MAX_DIM
 from MeshObject import MeshObject
+import time
+from LinearSystem import LinearSystem
 
 class PerformanceTimer:
 	def __init__(self):
