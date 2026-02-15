@@ -48,8 +48,8 @@ class TestOperations(unittest.TestCase):
 		'''
 		test on a nxn grid for a lid-driven cavity setup.
 		'''
-		cells_x = 40
-		cells_y = 40
+		cells_x = 120 
+		cells_y = 120
 		cfg = {
 			'mesh_parameters': {
 				'x_range': [0, 1],
@@ -83,7 +83,7 @@ class TestOperations(unittest.TestCase):
 		pressureField.initialize_constant(0.)  # Initialize field to zero
 		gradPressureField.initialize_constant(0.)  # Initialize field to zero
 		dPressure.initialize_constant(0.)  # Initialize field to zero
-		dt = 0.1 #dt, for fast convergence, needs to be either Re*dx*dx/2 or dx/U
+		dt = 0.005 #dt, for fast convergence, needs to be either Re*dx*dx/2 or dx/U
 		velocitySystem = LinearSystem(mesh.get_num_cells()*MAX_DIM, "velocity_system", sparse=False)
 		pressureSystem = LinearSystem(mesh.get_num_cells(), "pressure_system", sparse=False)
 		timeTermAlg = AssembleCellVectorTimeTerm("Velocity_time_term", velocityNp1, velocityN, velocitySystem, mesh, dt)
@@ -105,12 +105,12 @@ class TestOperations(unittest.TestCase):
 		pressureCorrectionGradientOp = ComputeCellGradient(mesh, dPressure, grad_dPressure)
 		myLogger = LogObject([velocitySystem,pressureSystem])
 		directoryName = 'RESULTS'
-		numSteps = 1000
+		numSteps = 2000
 		numNonlinearIterations = 10
-		alphaV = 0.7
-		alphaP = 0.3
+		alphaV = 1.0 # was 0.7
+		alphaP = 1.0 # was 0.3
 		tolerance = 1e-5
-		timeOutputFreq = 20
+		timeOutputFreq = 40
 		if not os.path.exists(directoryName):
 			os.makedirs(directoryName)
 			print(f"Created directory: {directoryName}")
@@ -125,7 +125,7 @@ class TestOperations(unittest.TestCase):
 					alg.zero()
 				for alg in velocitySystemAlgs:
 					alg.assemble()
-				dU = velocitySystem.solve(method='gmres')
+				dU = velocitySystem.solve(method='bicgstab')
 				normRHS = np.linalg.norm(velocitySystem.get_rhs())
 				velocityNp1.increment(dU, scale=alphaV)
 				massFluxAlg.compute_mass_flux()
@@ -139,6 +139,8 @@ class TestOperations(unittest.TestCase):
 #				pressureSystem.get_lhs()[0,:] = 0
 #				pressureSystem.get_lhs()[0,0] = 1.0
 #				pressureSystem.get_rhs()[0] = 0
+				if (t == 0):
+					pressureSystem.cache_lu_preconditioner()
 				dPressure.data_ = pressureSystem.solve(method='gmres') # being lazy here..need to expose the underlying member
 				pressureField.increment(dPressure.get_data(), scale=alphaP)
 				pressureCorrectionGradientOp.compute_scalar_gradient()
@@ -183,5 +185,6 @@ class TestOperations(unittest.TestCase):
 	#speed = np.sqrt(U**2 + V**2)
 	#ax.streamplot(X, Y, U, V, color='white', linewidth=1, density=1.2)
 				plt.savefig(os.path.join(os.getcwd(),directoryName, f'pressure_and_velocity_at_{t}.png'))
-				plt.close()
+				plt.close()#
+
 

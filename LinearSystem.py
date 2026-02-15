@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.sparse import csr_matrix
 from scipy.linalg import solve
-from scipy.sparse.linalg import spsolve, gmres, bicgstab, LinearOperator, spilu
+from scipy.sparse.linalg import spsolve, gmres, bicgstab, LinearOperator, splu
 
 class IterationCounter:
     def __init__(self):
@@ -22,6 +22,7 @@ class LinearSystem:
         self.numDof_ = num_dof
         self.name_ = name
         self.sparse_ = sparse
+        self.ilu_ = None
         
         if sparse:
             self.lhs_data = []  # Store (row, col, value) tuples
@@ -67,6 +68,8 @@ class LinearSystem:
     def get_rhs(self):
         """Get RHS vector."""
         return self.rhs
+    def cache_lu_preconditioner(self):
+        self.ilu_ = splu(self.get_lhs())  # Precompute ILU preconditioner for iterative solvers
     
     def solve(self, method='direct', **kwargs):
         """
@@ -87,8 +90,9 @@ class LinearSystem:
         elif method == 'gmres':
             counter = IterationCounter()
             # gmres returns (x, info); info == 0 means convergence
-            ilu = spilu(self.get_lhs())  # Precompute ILU preconditioner for iterative solvers
-            defaultPreconditioner = LinearOperator(self.lhs.shape,ilu.solve)
+            if self.ilu_ == None:
+                self.ilu_ = splu(self.get_lhs())  # Precompute ILU preconditioner for iterative solvers
+            defaultPreconditioner = LinearOperator(self.lhs.shape,self.ilu_.solve)
             defaultArgs = {'rtol': 1e-8, 'restart': None, 'M': defaultPreconditioner}
             if kwargs is not None:
                 defaultArgs.update(kwargs)
@@ -98,7 +102,7 @@ class LinearSystem:
             return x
             
         elif method == 'bicgstab':
-            x, info = bicgstab(lhs, self.rhs, M=self.defaultPreconditioner_, **kwargs)
+            x, info = bicgstab(lhs, self.rhs,**kwargs)
             return x
             
         else:
