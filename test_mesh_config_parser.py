@@ -35,21 +35,6 @@ class TestMeshConfigParser(unittest.TestCase):
             yaml.dump(config, f)
         return file_path
 
-    # Initialization tests
-    def test_init_stores_file_path(self):
-        """Test that __init__ correctly stores the file path"""
-        file_path = "test.yaml"
-        parser = InputConfigParser(file_path)
-        self.assertEqual(parser.filePath_, file_path)
-
-    def test_init_initializes_ranges_as_none(self):
-        """Test that __init__ initializes all range attributes as None"""
-        parser = InputConfigParser("test.yaml")
-        self.assertIsNone(parser.xRange_)
-        self.assertIsNone(parser.yRange_)
-        self.assertIsNone(parser.numCellsX_)
-        self.assertIsNone(parser.numCellsY_)
-
     # load_config tests
     def test_load_config_valid_file(self):
         """Test that load_config successfully loads a valid YAML file"""
@@ -61,8 +46,8 @@ class TestMeshConfigParser(unittest.TestCase):
 
     def test_load_config_file_not_found(self):
         """Test that load_config raises FileNotFoundError for non-existent file"""
-        parser = InputConfigParser("nonexistent_file.yaml")
         with self.assertRaises(FileNotFoundError):
+            parser = InputConfigParser("nonexistent_file.yaml")
             parser.load_config()
 
     def test_load_config_invalid_yaml(self):
@@ -71,9 +56,8 @@ class TestMeshConfigParser(unittest.TestCase):
         with open(file_path, 'w') as f:
             f.write("invalid: yaml: content: [")  # Malformed YAML
         
-        parser = InputConfigParser(file_path)
         with self.assertRaises(yaml.YAMLError):
-            parser.load_config()
+            parser = InputConfigParser(file_path)
 
     # parse_mesh_parameters tests
     def test_parse_mesh_parameters_valid_config(self):
@@ -145,9 +129,8 @@ class TestMeshConfigParser(unittest.TestCase):
 
     def test_parse_mesh_parameters_nonexistent_file(self):
         """Test that parse_mesh_parameters raises error for nonexistent file"""
-        parser = InputConfigParser("nonexistent_file.yaml")
         with self.assertRaises(FileNotFoundError):
-            parser.parse_mesh_parameters()
+            parser = InputConfigParser("nonexistent_file.yaml")
 
     def test_parse_mesh_parameters_with_extra_fields(self):
         """Test parsing config with extra fields (should be ignored)"""

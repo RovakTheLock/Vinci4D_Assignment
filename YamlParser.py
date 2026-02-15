@@ -9,6 +9,7 @@ class InputConfigParser:
         self.yRange_ = None
         self.numCellsY_ = None
         self.numCellsX_ = None
+        self.parse_mesh_parameters()
 
     def load_config(self):
         try:
@@ -32,6 +33,7 @@ class InputConfigParser:
         self.yRange_ = mesh_params.get('y_range')
         self.numCellsX_ = mesh_params.get('num_cells_x')
         self.numCellsY_ = mesh_params.get('num_cells_y')
+
 
     def __repr__(self):
         return (
