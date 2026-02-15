@@ -17,8 +17,12 @@ class AssembleSystemBase:
         self.myMeshObject_ : MeshObject = meshObject
     def zero(self):
         self.linearSystem_.zero()
+    def zero_rhs(self):
+        self.linearSystem_.zero_rhs()
     def assemble(self):
         raise NotImplementedError("Must implement assemble() in subclass")
+    def assemble_rhs(self):
+        raise NotImplementedError("Must implement assemble_rhs() in subclass")
     def __repr__(self):
         return f"AssembleSystemBase(name='{self.name_}', field='{self.fieldsHolder_.get_name()}', linearSystem='{self.linearSystem_}')"
 
@@ -186,6 +190,16 @@ class AssembleInteriorPressurePoissonSystem(AssembleSystemBase):
             self.linearSystem_.add_lhs(leftCellID, leftCellID, -lhsFactor)  
             self.linearSystem_.add_lhs(rightCellID, rightCellID, -lhsFactor)  
             self.linearSystem_.add_lhs(rightCellID, leftCellID, lhsFactor)  
+    def assemble_rhs(self):
+        # Loop over internal faces and assemble contributions to the linear system
+        for face in self.myMeshObject_.get_internal_faces():
+            leftCellID = face.get_left_cell()
+            rightCellID = face.get_right_cell()
+            massFlux = face.massFlux_
+
+            # Add contribution to the RHS
+            self.linearSystem_.add_rhs(leftCellID, massFlux) 
+            self.linearSystem_.add_rhs(rightCellID, -massFlux)
 
 class AssembleInteriorScalarDiffusionToLinSystem(AssembleSystemBase):
     def __init__(self, name, fieldsHolder, linearSystem, meshObject, diffusionCoeff=1.0):

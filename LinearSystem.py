@@ -55,6 +55,9 @@ class LinearSystem:
         else:
             self.lhs.fill(0.0)
         self.rhs.fill(0.0)
+
+    def zero_rhs(self):
+        self.rhs.fill(0.0)
     
     def get_lhs(self):
         """Get LHS matrix in appropriate format."""
