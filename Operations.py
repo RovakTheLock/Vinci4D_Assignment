@@ -2,6 +2,41 @@ import numpy as np
 from FieldsHolder import FieldArray, MAX_DIM
 from MeshObject import MeshObject
 
+class PerformanceTimer:
+	def __init__(self):
+		self.myStartTimer_ = 0.0
+		self.myEndTimer_ = 0.0
+		self.myEventName_ = None
+	def start_timer(self, eventName):
+		self.myEventName_ = eventName
+		self.myStartTimer_ = time.perf_counter()
+	def end_timer(self):
+		assert self.myEventName_ != None, "No event was started"
+		self.myEndTimer_ = time.perf_counter()
+		print(f"For event {self.myEventName_}, timer: {self.myEndTimer_ - self.myStartTimer_:.6f} seconds ")
+		self.myEventName_ = None
+
+
+class LogObject:
+	def __init__(self,systemVector):
+		self.mySystemVector_ : list[LinearSystem] = systemVector
+		self.myNonlinearResiduals_ = {}
+	def report_log(self, nonlinIterCounter):
+		print(f"For nonlinear iteration = {nonlinIterCounter}")
+		for i in range(len(self.mySystemVector_)):
+			system = self.mySystemVector_[i]
+			residual = np.linalg.norm(system.get_rhs())
+			print(f"\tFor system {system.get_name()}: RHS residual = {residual}")
+			self.myNonlinearResiduals_[system.name_] = residual
+	def get_residuals(self):
+		for i in range(len(self.mySystemVector_)):
+			system = self.mySystemVector_[i]
+			residual = np.linalg.norm(system.get_rhs())
+			self.myNonlinearResiduals_[system.name_] = residual
+		return self.myNonlinearResiduals_
+
+
+
 
 class CFLTimeStepCompute:
     def __init__(self, mesh_object, CFL):
