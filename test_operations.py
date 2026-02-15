@@ -7,7 +7,7 @@ from YamlParser import InputConfigParser
 from MeshObject import MeshObject
 from QuadElement import Face, Cell
 from FieldsHolder import FieldArray, FieldNames, DimType, MAX_DIM
-from Operations import ComputeInteriorMassFlux, ComputeCellGradient
+from Operations import ComputeInteriorMassFlux, ComputeCellGradient, CFLTimeStepCompute
 import math
 
 
@@ -19,6 +19,27 @@ class TestOperations(unittest.TestCase):
 		for f in os.listdir(self.tmpdir):
 			os.remove(os.path.join(self.tmpdir, f))
 		os.rmdir(self.tmpdir)
+	def test_cfl_time_step_compute(self):
+		cfg = {
+			'mesh_parameters': {
+				'x_range': [0, 2],
+				'y_range': [0, 1],
+				'num_cells_x': 4,
+				'num_cells_y': 2
+			}
+		}
+		path = os.path.join(self.tmpdir, 'mesh_cfl.yaml')
+		with open(path, 'w') as f:
+			yaml.safe_dump(cfg, f)
+
+		parser = InputConfigParser(path)
+		mesh = MeshObject(parser)
+		cfl_value = 0.5
+		time_step_op = CFLTimeStepCompute(mesh, cfl_value)
+
+		dt = time_step_op.compute_time_step()
+		expected_dt = 0.5 * min((2 - 0) / 4, (1 - 0) / 2)
+		self.assertAlmostEqual(dt, expected_dt, places=12)
 	def test_3x3_cell_grad_op_scalar(self):
 		"""Test that we compute the right gradient given a linear field with slope 1"""
 		cfg = {

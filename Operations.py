@@ -3,6 +3,22 @@ from FieldsHolder import FieldArray, MAX_DIM
 from MeshObject import MeshObject
 
 
+class CFLTimeStepCompute:
+    def __init__(self, mesh_object, CFL):
+        self.myMeshObject_ : MeshObject = mesh_object
+        self.CFL_ = CFL
+    def compute_time_step(self):
+        """Assume a unit velocity at top boundary for now, and uniform cell spacing in x and y"""
+        xRange = self.myMeshObject_.get_x_range()
+        yRange = self.myMeshObject_.get_y_range()
+        numCellsX, numCellsY = self.myMeshObject_.get_cell_count()
+        minDx = (xRange[1] - xRange[0])/numCellsX
+        minDy = (yRange[1] - yRange[0])/numCellsY
+        minCellSpacing = min(minDx, minDy)
+        maxVelocity = 1.0
+        min_time_step = self.CFL_ * minCellSpacing / maxVelocity
+        return min_time_step
+
 class ComputeInteriorMassFlux:
     def __init__(self, mesh_object, velocity_field_array, pressure_field_array, cell_pressure_gradient_field_array, dt):
         self.myMeshObject_ : MeshObject = mesh_object
