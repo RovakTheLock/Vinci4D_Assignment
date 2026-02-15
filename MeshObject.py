@@ -34,6 +34,14 @@ class MeshObject:
         self.topBoundaryFaces_ = None
         self.generate_grid()
         self.generate_faces()
+
+    def get_x_range(self):
+        """Get x range of the mesh as a tuple (x_min, x_max)"""
+        return self.config_parser_.xRange_
+    
+    def get_y_range(self):
+        """Get y range of the mesh as a tuple (y_min, y_max)"""
+        return self.config_parser_.yRange_
     
     def generate_grid(self):
         """

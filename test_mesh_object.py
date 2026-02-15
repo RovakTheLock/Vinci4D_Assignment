@@ -359,6 +359,42 @@ class TestMeshObject(unittest.TestCase):
 			self.assertEqual(faceCentroid[1], 0.0) # Bottom boundary faces should be at y=0
 			self.assertTrue(xRange[0] <= faceCentroid[0] <= xRange[1]) # x should be within domain bounds
 
+	def test_get_x_range(self):
+		xRange = [-2.5, 3.0]
+		cfg = {
+			'mesh_parameters': {
+				'x_range': xRange,
+				'y_range': [0.0, 1.0],
+				'num_cells_x': 4,
+				'num_cells_y': 4
+			}
+		}
+		path = os.path.join(self.tmpdir, 'mesh_get_x_range.yaml')
+		with open(path, 'w') as f:
+			yaml.safe_dump(cfg, f)
+
+		parser = InputConfigParser(path)
+		mesh = MeshObject(parser)
+		self.assertEqual(mesh.get_x_range(), xRange)
+
+	def test_get_y_range(self):
+		yRange = [-1.0, 2.0]
+		cfg = {
+			'mesh_parameters': {
+				'x_range': [0.0, 1.0],
+				'y_range': yRange,
+				'num_cells_x': 4,
+				'num_cells_y': 4
+			}
+		}
+		path = os.path.join(self.tmpdir, 'mesh_get_y_range.yaml')
+		with open(path, 'w') as f:
+			yaml.safe_dump(cfg, f)
+
+		parser = InputConfigParser(path)
+		mesh = MeshObject(parser)
+		self.assertEqual(mesh.get_y_range(), yRange)
+
 
 
 if __name__ == '__main__':
