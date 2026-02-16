@@ -161,7 +161,7 @@ simulation:
     FieldArray velocityField("velocity", DimType::VECTOR, testNumCells);
     velocityField.initializeConstant(0.0);
     
-    LinearSystem system(testDof, "VectorDiffusion", true);  // Use sparse matrix
+    LinearSystem system(testDof, "VectorDiffusion", false);  // Use dense matrix to match Python
     
     double diffusionCoeff = 1.0;
     

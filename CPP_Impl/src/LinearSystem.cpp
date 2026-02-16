@@ -7,11 +7,25 @@ namespace Vinci4D {
 LinearSystem::LinearSystem(int numDof, const std::string& name, bool sparse)
     : numDof_(numDof), name_(name), assembled_(false) {
     
-    // Create PETSc matrix (sparse format)
+    // Create PETSc matrix
     MatCreate(PETSC_COMM_WORLD, &lhs_);
     MatSetSizes(lhs_, PETSC_DECIDE, PETSC_DECIDE, numDof_, numDof_);
-    MatSetFromOptions(lhs_);
+    
+    // Explicitly set matrix type to AIJ (sparse) format for efficient assembly
+    MatSetType(lhs_, MATSEQAIJ);
+    
     MatSetUp(lhs_);
+    
+    // Preallocate generously for stencil patterns and boundary contributions
+    // For 2D: interior cells have ~5-8 neighbors * 2 DOF components = ~10-16 nonzeros
+    // Boundary cells and vector systems may have more complex patterns
+    // Use 30 as a safe upper bound, allow dynamic allocation if exceeded
+    PetscInt prealloc = 30;
+    MatSeqAIJSetPreallocation(lhs_, prealloc, nullptr);
+    
+    // Allow dynamic allocation if preallocation is exceeded
+    // This is important for complex assembly patterns
+    MatSetOption(lhs_, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
     
     // Create PETSc RHS vector
     VecCreate(PETSC_COMM_WORLD, &rhs_);
@@ -38,22 +52,9 @@ void LinearSystem::addRhs(int row, double value) {
 }
 
 void LinearSystem::zero() {
-    // Always destroy and recreate to ensure clean state
-    // This avoids issues with pending values in unassembled matrices
-    MatDestroy(&lhs_);
-    
-    // Recreate the matrix with fresh state
-    MatCreate(PETSC_COMM_WORLD, &lhs_);
-    MatSetSizes(lhs_, PETSC_DECIDE, PETSC_DECIDE, numDof_, numDof_);
-    MatSetFromOptions(lhs_);
-    MatSetUp(lhs_);
-    
-    // Initialize all diagonal entries to 0 using ADD_VALUES mode
-    // This ensures PETSc's requirement that sparse matrices have all diagonals
-    for (int i = 0; i < numDof_; i++) {
-        MatSetValue(lhs_, i, i, 0.0, ADD_VALUES);
-    }
-    
+    // Zero out existing matrices without destroying them
+    // This preserves PETSc's internal structure and preallocation
+    MatZeroEntries(lhs_);
     VecZeroEntries(rhs_);
     assembled_ = false;
 }

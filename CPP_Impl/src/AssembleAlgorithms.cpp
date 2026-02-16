@@ -101,13 +101,13 @@ void AssembleInteriorVectorDiffusionToLinSystem::assemble() {
             double flux = diffusionFactor * (phiRight - phiLeft);
             
             // Contribution to left cell
-            linearSystem_->addLhs(rowLeft, rowLeft, diffusionFactor);
-            linearSystem_->addLhs(rowLeft, rowRight, -diffusionFactor);
+            linearSystem_->addLhs(rowLeft, rowLeft, -diffusionFactor);
+            linearSystem_->addLhs(rowLeft, rowRight, diffusionFactor);
             linearSystem_->addRhs(rowLeft, -flux);
             
             // Contribution to right cell
-            linearSystem_->addLhs(rowRight, rowRight, diffusionFactor);
-            linearSystem_->addLhs(rowRight, rowLeft, -diffusionFactor);
+            linearSystem_->addLhs(rowRight, rowRight, -diffusionFactor);
+            linearSystem_->addLhs(rowRight, rowLeft, diffusionFactor);
             linearSystem_->addRhs(rowRight, flux);
         }
     }
