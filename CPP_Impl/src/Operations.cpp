@@ -2,6 +2,7 @@
 #include <iostream>
 #include <algorithm>
 #include <cmath>
+#include <numeric>
 #include <stdexcept>
 
 namespace Vinci4D {
@@ -23,9 +24,20 @@ void PerformanceTimer::endTimer() {
     double seconds = duration.count() / 1e6;
     
     std::cout << "For event " << eventName_ << ", timer: " << seconds << " seconds" << std::endl;
+    eventTimings_[eventName_].push_back(seconds);
     
     started_ = false;
     eventName_ = "";
+}
+
+void PerformanceTimer::report_timing_statistics() const {
+    std::cout << "\n=== Timing Statistics ===" << std::endl;
+    for (const auto& pair : eventTimings_) {
+        const auto& times = pair.second;
+        double total = std::accumulate(times.begin(), times.end(), 0.0);
+        double average = total / times.size();
+        std::cout << "Event: " << pair.first << ", Average Time: " << average << " seconds over " << times.size() << " events." << std::endl;
+    }
 }
 
 void LogObject::reportLog(int nonlinIterCounter) {

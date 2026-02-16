@@ -19,9 +19,11 @@ public:
     
     void startTimer(const std::string& eventName);
     void endTimer();
+    void report_timing_statistics() const;
 
 private:
     std::string eventName_;
+    std::map<std::string, std::vector<double>> eventTimings_;
     bool started_;
     std::chrono::high_resolution_clock::time_point startTime_;
 };
