@@ -1,5 +1,6 @@
 #include <petsc.h>
 #include <gtest/gtest.h>
+#include <fstream>
 #include "../include/Operations.h"
 #include "../include/MeshObject.h"
 #include "../include/YamlParser.h"
@@ -138,6 +139,115 @@ TEST_F(OperationsTest, LogObjectMultipleIterations) {
         logger.reportLog(2);
         logger.reportLog(3);
     });
+}
+
+TEST_F(OperationsTest, ThreeByThreeCellGradOpScalar) {
+    // Test that we compute the right gradient given a linear field with slope 1
+    const char* yaml_content = R"(
+mesh_parameters:
+  x_range: [0.0, 1.0]
+  y_range: [0.0, 1.0]
+  num_cells_x: 3
+  num_cells_y: 3
+simulation:
+  Re: 100
+  CFL: 0.5
+)";
+    
+    // Write temporary config
+    std::ofstream tmpYaml("/tmp/gradient_test_3x3.yaml");
+    tmpYaml << yaml_content;
+    tmpYaml.close();
+    
+    InputConfigParser testParser("/tmp/gradient_test_3x3.yaml");
+    MeshObject testMesh(testParser);
+    int testNumCells = testMesh.getNumCells();
+    
+    // Initialize pressure field to be linear in x for testing gradient
+    FieldArray pressureField("pressure", DimType::SCALAR, testNumCells);
+    auto& pressureData = pressureField.getData();
+    
+    for (const auto& cell : testMesh.getCells()) {
+        int cellID = cell.getFlatId();
+        auto centroid = cell.getCentroid();
+        pressureData[cellID] = centroid[0];  // Set pressure to x-coordinate of cell center
+    }
+    
+    // Compute gradient
+    FieldArray gradPressureField("grad_pressure", DimType::VECTOR, testNumCells);
+    ComputeCellGradient gradientOp(&testMesh, &pressureField, &gradPressureField);
+    gradientOp.computeScalarGradient();
+    
+    auto& gradData = gradPressureField.getData();
+    
+    // For uniform grid, expect gradient to be approximately 1 in x direction and 0 in y direction
+    // in interior cells. Boundary cells will have different values due to one-sided differences
+    for (const auto* interiorCell : testMesh.getInteriorCells()) {
+        int cellID = interiorCell->getFlatId();
+        double grad_x = gradData[cellID * MAX_DIM];          // x component of gradient
+        double grad_y = gradData[cellID * MAX_DIM + 1];      // y component of gradient
+        
+        EXPECT_NEAR(grad_x, 1.0, 1e-5) 
+            << "X-gradient mismatch at interior cell " << cellID;
+        EXPECT_NEAR(grad_y, 0.0, 1e-5) 
+            << "Y-gradient mismatch at interior cell " << cellID;
+    }
+}
+
+TEST_F(OperationsTest, SixBySixCellGradOpScalarWithSlope) {
+    // Test that we compute the right gradient given a linear field with non-1 slope
+    const char* yaml_content = R"(
+mesh_parameters:
+  x_range: [0.0, 1.0]
+  y_range: [0.0, 1.0]
+  num_cells_x: 6
+  num_cells_y: 6
+simulation:
+  Re: 100
+  CFL: 0.5
+)";
+    
+    // Write temporary config
+    std::ofstream tmpYaml("/tmp/gradient_test_6x6.yaml");
+    tmpYaml << yaml_content;
+    tmpYaml.close();
+    
+    InputConfigParser testParser("/tmp/gradient_test_6x6.yaml");
+    MeshObject testMesh(testParser);
+    int testNumCells = testMesh.getNumCells();
+    
+    double slope = 10.0;
+    
+    // Initialize pressure field to be linear in x with given slope
+    FieldArray pressureField("pressure", DimType::SCALAR, testNumCells);
+    auto& pressureData = pressureField.getData();
+    
+    for (const auto& cell : testMesh.getCells()) {
+        int cellID = cell.getFlatId();
+        auto centroid = cell.getCentroid();
+        pressureData[cellID] = slope * centroid[0];  // Set pressure to slope * x-coordinate
+    }
+    
+    // Compute gradient
+    FieldArray gradPressureField("grad_pressure", DimType::VECTOR, testNumCells);
+    ComputeCellGradient gradientOp(&testMesh, &pressureField, &gradPressureField);
+    gradientOp.computeScalarGradient();
+    
+    auto& gradData = gradPressureField.getData();
+    
+    // For uniform grid, expect gradient to be approximately 'slope' in x direction and 0 in y direction
+    // in interior cells. Boundary cells will have different values due to one-sided differences
+    for (const auto* interiorCell : testMesh.getInteriorCells()) {
+        int cellID = interiorCell->getFlatId();
+        double grad_x = gradData[cellID * MAX_DIM];          // x component of gradient
+        double grad_y = gradData[cellID * MAX_DIM + 1];      // y component of gradient
+        
+        EXPECT_NEAR(grad_x, slope, 1e-5) 
+            << "X-gradient mismatch at interior cell " << cellID 
+            << " (expected " << slope << ", got " << grad_x << ")";
+        EXPECT_NEAR(grad_y, 0.0, 1e-5) 
+            << "Y-gradient mismatch at interior cell " << cellID;
+    }
 }
 
 int main(int argc, char** argv) {
