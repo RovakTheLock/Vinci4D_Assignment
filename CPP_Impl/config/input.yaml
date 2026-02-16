@@ -34,13 +34,13 @@ simulation:
   CFL: 0.8
   
   # Total simulation time to run (seconds)
-  termination_time: 0.004
+  termination_time: 0.5
   
   # Nonlinear iterations per time step (momentum-pressure coupling)
   num_nonlinear_iterations: 5
   
   # Output frequency and directory
-  output_frequency: 50              # Save results every N time steps
+  output_frequency: 5              # Save results every N time steps
   output_directory: ./testing_output  # Directory to save VTK/data files
   
   # Convergence tolerances for nonlinear iterations

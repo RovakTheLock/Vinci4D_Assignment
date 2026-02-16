@@ -4,8 +4,17 @@
 #include <cmath>
 #include <numeric>
 #include <stdexcept>
+#include <mpi.h>
 
 namespace Vinci4D {
+
+namespace {
+bool isRootRank() {
+    int rank = 0;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    return rank == 0;
+}
+}
 
 void PerformanceTimer::startTimer(const std::string& eventName) {
     eventName_ = eventName;
@@ -15,7 +24,9 @@ void PerformanceTimer::startTimer(const std::string& eventName) {
 
 void PerformanceTimer::endTimer() {
     if (!started_) {
-        std::cerr << "Warning: Timer was not started" << std::endl;
+        if (isRootRank()) {
+            std::cerr << "Warning: Timer was not started" << std::endl;
+        }
         return;
     }
     
@@ -23,7 +34,9 @@ void PerformanceTimer::endTimer() {
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime_);
     double seconds = duration.count() / 1e6;
     
-    std::cout << "For event " << eventName_ << ", timer: " << seconds << " seconds" << std::endl;
+    if (isRootRank()) {
+        std::cout << "For event " << eventName_ << ", timer: " << seconds << " seconds" << std::endl;
+    }
     eventTimings_[eventName_].push_back(seconds);
     
     started_ = false;
@@ -31,6 +44,9 @@ void PerformanceTimer::endTimer() {
 }
 
 void PerformanceTimer::report_timing_statistics() const {
+    if (!isRootRank()) {
+        return;
+    }
     std::cout << "\n=== Timing Statistics ===" << std::endl;
     for (const auto& pair : eventTimings_) {
         const auto& times = pair.second;
@@ -41,6 +57,9 @@ void PerformanceTimer::report_timing_statistics() const {
 }
 
 void LogObject::reportLog(int nonlinIterCounter) {
+    if (!isRootRank()) {
+        return;
+    }
     std::cout << "For nonlinear iteration = " << nonlinIterCounter << std::endl;
     
     for (auto* system : systemVector_) {
@@ -84,12 +103,18 @@ ComputeInteriorMassFlux::ComputeInteriorMassFlux(
       scaling_(dt) {}
 
 void ComputeInteriorMassFlux::computeMassFlux() {
+    // Exchange ghost cells before computing face-based quantities
+    velocityFieldArray_->exchangeGhostCells(*meshObject_);
+    pressureFieldArray_->exchangeGhostCells(*meshObject_);
+    cellPressureGradientFieldArray_->exchangeGhostCells(*meshObject_);
+    
     const auto& internalFaces = meshObject_->getInternalFaces();
     auto& velocityData = velocityFieldArray_->getData();
     auto& pressureData = pressureFieldArray_->getData();
     auto& gradPressureData = cellPressureGradientFieldArray_->getData();
     
     int numCells = meshObject_->getNumCells();
+    bool isParallel = (meshObject_->getMpiSize() > 1);
     
     for (auto* face : internalFaces) {
         int leftCellID = face->getLeftCell();
@@ -99,22 +124,33 @@ void ComputeInteriorMassFlux::computeMassFlux() {
         if (leftCellID < 0 || leftCellID >= numCells || rightCellID < 0 || rightCellID >= numCells) {
             throw std::runtime_error("Invalid cell ID in internal face");
         }
+
+        // Only compute faces owned by this rank in parallel
+        if (isParallel && !meshObject_->isLocalCell(leftCellID)) {
+            continue;
+        }
+
+        int localLeftID = isParallel ? meshObject_->globalToLocal(leftCellID) : leftCellID;
+        int localRightID = isParallel ? meshObject_->globalToLocal(rightCellID) : rightCellID;
+        if (localLeftID < 0 || localRightID < 0) {
+            continue;
+        }
         
         // Get velocity values
-        double leftVelX = velocityData[leftCellID * MAX_DIM + 0];
-        double leftVelY = velocityData[leftCellID * MAX_DIM + 1];
-        double rightVelX = velocityData[rightCellID * MAX_DIM + 0];
-        double rightVelY = velocityData[rightCellID * MAX_DIM + 1];
+        double leftVelX = velocityData[localLeftID * MAX_DIM + 0];
+        double leftVelY = velocityData[localLeftID * MAX_DIM + 1];
+        double rightVelX = velocityData[localRightID * MAX_DIM + 0];
+        double rightVelY = velocityData[localRightID * MAX_DIM + 1];
         
         // Get pressure gradient values
-        double leftGradPX = gradPressureData[leftCellID * MAX_DIM + 0];
-        double leftGradPY = gradPressureData[leftCellID * MAX_DIM + 1];
-        double rightGradPX = gradPressureData[rightCellID * MAX_DIM + 0];
-        double rightGradPY = gradPressureData[rightCellID * MAX_DIM + 1];
+        double leftGradPX = gradPressureData[localLeftID * MAX_DIM + 0];
+        double leftGradPY = gradPressureData[localLeftID * MAX_DIM + 1];
+        double rightGradPX = gradPressureData[localRightID * MAX_DIM + 0];
+        double rightGradPY = gradPressureData[localRightID * MAX_DIM + 1];
 
         // Get pressure values
-        double leftPressure = pressureData[leftCellID];
-        double rightPressure = pressureData[rightCellID];
+        double leftPressure = pressureData[localLeftID];
+        double rightPressure = pressureData[localRightID];
         
         // Average velocities and pressure gradients
         double avgVelX = 0.5 * (leftVelX + rightVelX);
@@ -150,58 +186,18 @@ void ComputeInteriorMassFlux::computeMassFlux() {
     }
 }
 
-void ComputeInteriorMassFlux::correctMassFlux(FieldArray* dP) {
-    const auto& internalFaces = meshObject_->getInternalFaces();
-    auto& dPData = dP->getData();
-    
-    int numCells = meshObject_->getNumCells();
-    
-    for (auto* face : internalFaces) {
-        int leftCellID = face->getLeftCell();
-        int rightCellID = face->getRightCell();
-        
-        // Validate cell IDs
-        if (leftCellID < 0 || leftCellID >= numCells || rightCellID < 0 || rightCellID >= numCells) {
-            throw std::runtime_error("Invalid cell ID in internal face");
-        }
-        
-        // Get pressure correction values
-        double leftDP = dPData[leftCellID];
-        double rightDP = dPData[rightCellID];
-        
-        // Get cell centroids
-        const Cell* leftCell = meshObject_->getCellByFlatId(leftCellID);
-        const Cell* rightCell = meshObject_->getCellByFlatId(rightCellID);
-        
-        if (!leftCell || !rightCell) {
-            throw std::runtime_error("Invalid cell ID in internal face");
-        }
-        
-        auto leftCentroid = leftCell->getCentroid();
-        auto rightCentroid = rightCell->getCentroid();
-        auto normal = face->getNormalVector();
-        
-        // Compute distance along normal
-        double distance = 0.0;
-        for (int i = 0; i < MAX_DIM; ++i) {
-            distance += (rightCentroid[i] - leftCentroid[i]) * normal[i];
-        }
-        
-        // Compute pressure correction gradient
-        double faceGradPressureCorrection = (rightDP - leftDP) / distance;
-        
-        // Correct mass flux
-        face->massFlux_ -= scaling_ * faceGradPressureCorrection;
-    }
-}
-
 void ComputeCellGradient::computeScalarGradient() {
+    // Exchange ghost cells before computing gradients
+    inField_->exchangeGhostCells(*meshObject_);
+    
     outField_->initializeConstant(0.0);
     
     int numComponents = outField_->getNumComponents();
     auto& inData = inField_->getData();
     auto& outData = outField_->getData();
     
+    bool isParallel = (meshObject_->getMpiSize() > 1);
+
     // Interior faces contribution
     for (const auto* face : meshObject_->getInternalFaces()) {
         int leftCellID = face->getLeftCell();
@@ -210,8 +206,14 @@ void ComputeCellGradient::computeScalarGradient() {
         if (leftCellID < 0 || rightCellID < 0) continue;
         if (leftCellID >= meshObject_->getNumCells() || rightCellID >= meshObject_->getNumCells()) continue;
         
-        double leftValue = inData[leftCellID];
-        double rightValue = inData[rightCellID];
+        int localLeftID = isParallel ? meshObject_->globalToLocal(leftCellID) : leftCellID;
+        int localRightID = isParallel ? meshObject_->globalToLocal(rightCellID) : rightCellID;
+        if (localLeftID < 0 || localRightID < 0) {
+            continue;
+        }
+
+        double leftValue = inData[localLeftID];
+        double rightValue = inData[localRightID];
         double faceValue = 0.5 * (leftValue + rightValue);
         
         auto normal = face->getNormalVector();
@@ -220,34 +222,43 @@ void ComputeCellGradient::computeScalarGradient() {
         double areaY = normal[1] * area;
         
         // Left cell contribution
-        outData[leftCellID * numComponents + 0] += faceValue * areaX;
-        outData[leftCellID * numComponents + 1] += faceValue * areaY;
+        if (!isParallel || meshObject_->isLocalCell(leftCellID)) {
+            outData[localLeftID * numComponents + 0] += faceValue * areaX;
+            outData[localLeftID * numComponents + 1] += faceValue * areaY;
+        }
         
         // Right cell contribution (opposite normal)
-        outData[rightCellID * numComponents + 0] -= faceValue * areaX;
-        outData[rightCellID * numComponents + 1] -= faceValue * areaY;
+        if (!isParallel || meshObject_->isLocalCell(rightCellID)) {
+            outData[localRightID * numComponents + 0] -= faceValue * areaX;
+            outData[localRightID * numComponents + 1] -= faceValue * areaY;
+        }
     }
     
     // Boundary faces contribution
     for (const auto* face : meshObject_->getBoundaryFaces()) {
         int cellID = face->getLeftCell();
         if (cellID < 0 || cellID >= meshObject_->getNumCells()) continue;
+        if (isParallel && !meshObject_->isLocalCell(cellID)) continue;
+
+        int localCellID = isParallel ? meshObject_->globalToLocal(cellID) : cellID;
+        if (localCellID < 0) continue;
         
-        double faceValue = inData[cellID];
+        double faceValue = inData[localCellID];
         auto normal = face->getNormalVector();
         double area = face->getArea();
         
-        outData[cellID * numComponents + 0] += faceValue * normal[0] * area;
-        outData[cellID * numComponents + 1] += faceValue * normal[1] * area;
+        outData[localCellID * numComponents + 0] += faceValue * normal[0] * area;
+        outData[localCellID * numComponents + 1] += faceValue * normal[1] * area;
     }
     
     // Scale by cell volume
-    for (const auto& cell : meshObject_->getCells()) {
-        int cellID = cell.getFlatId();
+    const auto& cells = isParallel ? meshObject_->getLocalCells() : meshObject_->getCells();
+    for (const auto& cell : cells) {
+        int localCellID = isParallel ? cell.getLocalId() : cell.getFlatId();
         double cellVolume = cell.getVolume();
         
-        outData[cellID * numComponents + 0] /= cellVolume;
-        outData[cellID * numComponents + 1] /= cellVolume;
+        outData[localCellID * numComponents + 0] /= cellVolume;
+        outData[localCellID * numComponents + 1] /= cellVolume;
     }
 }
 

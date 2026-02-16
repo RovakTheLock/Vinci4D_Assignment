@@ -1,19 +1,26 @@
 #include "LinearSystem.h"
 #include <iostream>
 #include <stdexcept>
+#include <mpi.h>
 
 namespace Vinci4D {
 
-LinearSystem::LinearSystem(int numDof, const std::string& name, bool sparse)
-    : numDof_(numDof), name_(name), assembled_(false) {
+namespace {
+bool isRootRank() {
+    int rank = 0;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    return rank == 0;
+}
+}
+
+LinearSystem::LinearSystem(int numDof, const std::string& name, bool sparse, int localDof)
+    : numDof_(numDof), localDof_(localDof), name_(name), assembled_(false) {
     
-    // Create PETSc matrix
+    // Create PETSc matrix for parallel execution
+    // PETSc will automatically distribute rows across ranks
     MatCreate(PETSC_COMM_WORLD, &lhs_);
-    MatSetSizes(lhs_, PETSC_DECIDE, PETSC_DECIDE, numDof_, numDof_);
-    
-    // Explicitly set matrix type to AIJ (sparse) format for efficient assembly
-    MatSetType(lhs_, MATSEQAIJ);
-    
+    MatSetSizes(lhs_, localDof_, localDof_, numDof_, numDof_);
+    MatSetFromOptions(lhs_);
     MatSetUp(lhs_);
     
     // Preallocate generously for stencil patterns and boundary contributions
@@ -29,7 +36,7 @@ LinearSystem::LinearSystem(int numDof, const std::string& name, bool sparse)
     
     // Create PETSc RHS vector
     VecCreate(PETSC_COMM_WORLD, &rhs_);
-    VecSetSizes(rhs_, PETSC_DECIDE, numDof_);
+    VecSetSizes(rhs_, localDof_, numDof_);
     VecSetFromOptions(rhs_);
     
     // Create KSP solver context
@@ -84,18 +91,45 @@ void LinearSystem::solve(const std::string& method, Vec& solution,
     if (method == "direct") {
         KSPSetType(ksp_, KSPPREONLY);
         KSPGetPC(ksp_, &pc);
-        PCSetType(pc, PCLU);
+        
+        // Check if matrix is parallel (mpiaij) or sequential (seqaij)
+        PetscInt localSize, globalSize;
+        MatGetSize(lhs_, &globalSize, nullptr);
+        MatGetLocalSize(lhs_, &localSize, nullptr);
+        
+        if (localSize < globalSize) {
+            // Parallel matrix: use redundant preconditioner (gather to rank 0 and solve)
+            PCSetType(pc, PCREDUNDANT);
+            // After PCSetUp, configure the redundant solver to use LU
+        } else {
+            // Sequential matrix: use direct LU
+            PCSetType(pc, PCLU);
+        }
     } else if (method == "gmres") {
         KSPSetType(ksp_, KSPGMRES);
         KSPGMRESSetRestart(ksp_, 30);
         KSPGetPC(ksp_, &pc);
-        PCSetType(pc, PCILU);
-        PCFactorSetLevels(pc, 2);
+        PetscInt localSize, globalSize;
+        MatGetSize(lhs_, &globalSize, nullptr);
+        MatGetLocalSize(lhs_, &localSize, nullptr);
+        if (localSize < globalSize) {
+            PCSetType(pc, PCJACOBI);
+        } else {
+            PCSetType(pc, PCILU);
+            PCFactorSetLevels(pc, 2);
+        }
     } else if (method == "bicgstab") {
         KSPSetType(ksp_, KSPBCGS);
         KSPGetPC(ksp_, &pc);
-        PCSetType(pc, PCILU);
-        PCFactorSetLevels(pc, 2);
+        PetscInt localSize, globalSize;
+        MatGetSize(lhs_, &globalSize, nullptr);
+        MatGetLocalSize(lhs_, &localSize, nullptr);
+        if (localSize < globalSize) {
+            PCSetType(pc, PCJACOBI);
+        } else {
+            PCSetType(pc, PCILU);
+            PCFactorSetLevels(pc, 2);
+        }
     } else if (method == "cg") {
         KSPSetType(ksp_, KSPCG);
         KSPGetPC(ksp_, &pc);
@@ -114,6 +148,23 @@ void LinearSystem::solve(const std::string& method, Vec& solution,
     // Set up the solver (required before solving)
     KSPSetUp(ksp_);
     
+    // If using PCREDUNDANT, configure the internal solver to use LU
+    if (method == "direct") {
+        PetscInt localSize, globalSize;
+        MatGetSize(lhs_, &globalSize, nullptr);
+        MatGetLocalSize(lhs_, &localSize, nullptr);
+        
+        if (localSize < globalSize) {
+            // Configure redundant solver
+            KSP innerksp;
+            PC innerpc;
+            PCRedundantGetKSP(pc, &innerksp);
+            KSPSetType(innerksp, KSPPREONLY);
+            KSPGetPC(innerksp, &innerpc);
+            PCSetType(innerpc, PCLU);
+        }
+    }
+    
     // Solve
     KSPSolve(ksp_, rhs_, solution);
     
@@ -122,7 +173,9 @@ void LinearSystem::solve(const std::string& method, Vec& solution,
     KSPGetConvergedReason(ksp_, &reason);
     
     if (reason < 0) {
-        std::cerr << "Warning: KSP did not converge (reason=" << reason << ")" << std::endl;
+        if (isRootRank()) {
+            std::cerr << "Warning: KSP did not converge (reason=" << reason << ")" << std::endl;
+        }
     }
     
     // Report solver info
@@ -135,12 +188,14 @@ void LinearSystem::solve(const std::string& method, Vec& solution,
     KSPGetIterationNumber(ksp_, &its);
     PetscReal finalRes = 0.0;
     KSPGetResidualNorm(ksp_, &finalRes);
-    std::cout << "------------------------------------------------" << std::endl;
-    std::cout << "solver: " << (kspType ? kspType : method.c_str()) << std::endl;
-    std::cout << "preconditioner: " << (pcType ? pcType : "unknown") << std::endl;
-    std::cout << "number of iterations: " << its << std::endl;
-    std::cout << "final linear residual: " << finalRes << std::endl;
-    std::cout << "------------------------------------------------" << std::endl;
+    if (isRootRank()) {
+        std::cout << "------------------------------------------------" << std::endl;
+        std::cout << "solver: " << (kspType ? kspType : method.c_str()) << std::endl;
+        std::cout << "preconditioner: " << (pcType ? pcType : "unknown") << std::endl;
+        std::cout << "number of iterations: " << its << std::endl;
+        std::cout << "final linear residual: " << finalRes << std::endl;
+        std::cout << "------------------------------------------------" << std::endl;
+    }
 }
 
 void LinearSystem::solvePressure(Vec& solution, double rTol, int maxIter) {
@@ -174,7 +229,9 @@ void LinearSystem::solvePressure(Vec& solution, double rTol, int maxIter) {
     KSPGetConvergedReason(ksp_, &reason);
     
     if (reason < 0) {
-        std::cerr << "Warning: KSP (pressure) did not converge (reason=" << reason << ")" << std::endl;
+        if (isRootRank()) {
+            std::cerr << "Warning: KSP (pressure) did not converge (reason=" << reason << ")" << std::endl;
+        }
     }
     
     // Report solver info
@@ -187,12 +244,14 @@ void LinearSystem::solvePressure(Vec& solution, double rTol, int maxIter) {
     KSPGetIterationNumber(ksp_, &its);
     PetscReal finalRes = 0.0;
     KSPGetResidualNorm(ksp_, &finalRes);
-    std::cout << "------------------------------------------------" << std::endl;
-    std::cout << "solver: " << (kspType ? kspType : "cg") << std::endl;
-    std::cout << "preconditioner: " << (pcType ? pcType : "unknown") << std::endl;
-    std::cout << "number of iterations: " << its << std::endl;
-    std::cout << "final linear residual: " << finalRes << std::endl;
-    std::cout << "------------------------------------------------" << std::endl;
+    if (isRootRank()) {
+        std::cout << "------------------------------------------------" << std::endl;
+        std::cout << "solver: " << (kspType ? kspType : "cg") << std::endl;
+        std::cout << "preconditioner: " << (pcType ? pcType : "unknown") << std::endl;
+        std::cout << "number of iterations: " << its << std::endl;
+        std::cout << "final linear residual: " << finalRes << std::endl;
+        std::cout << "------------------------------------------------" << std::endl;
+    }
 }
 
 double LinearSystem::getRhsNorm() {

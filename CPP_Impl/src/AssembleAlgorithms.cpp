@@ -21,22 +21,29 @@ AssembleCellVectorTimeTerm::AssembleCellVectorTimeTerm(
 }
 
 void AssembleCellVectorTimeTerm::assemble() {
-    const auto& cells = meshObject_->getCells();
+    // Use local cells for parallel execution
+    bool isParallel = (meshObject_->getMpiSize() > 1);
+    const auto& cells = isParallel ? 
+                        meshObject_->getLocalCells() : meshObject_->getCells();
     auto& dataNew = fieldsHolder_->getData();
     const auto& dataOld = fieldHolderOld_->getData();
     int numComponents = fieldsHolder_->getNumComponents();
     
     for (const auto& cell : cells) {
-        int cellID = cell.getFlatId();
+        // In parallel mode: use local/global IDs
+        // In sequential mode: flatId serves as both local and global ID
+        int localId = isParallel ? cell.getLocalId() : cell.getFlatId();
+        int globalId = isParallel ? meshObject_->localToGlobal(localId) : cell.getFlatId();
         double cellVolume = cell.getVolume();
         
         for (int comp = 0; comp < numComponents; ++comp) {
             double lhsFactor = cellVolume / dt_;
-            int rowIndex = cellID * numComponents + comp;
-            double value = dataNew[rowIndex] - dataOld[rowIndex];
+            int localIndex = localId * numComponents + comp;
+            int globalIndex = globalId * numComponents + comp;
+            double value = dataNew[localIndex] - dataOld[localIndex];
             
-            linearSystem_->addLhs(rowIndex, rowIndex, -lhsFactor);
-            linearSystem_->addRhs(rowIndex, value * lhsFactor);
+            linearSystem_->addLhs(globalIndex, globalIndex, -lhsFactor);
+            linearSystem_->addRhs(globalIndex, value * lhsFactor);
         }
     }
 }
@@ -53,10 +60,14 @@ AssembleInteriorVectorDiffusionToLinSystem::AssembleInteriorVectorDiffusionToLin
 }
 
 void AssembleInteriorVectorDiffusionToLinSystem::assemble() {
+    // Exchange ghost cells before assembly
+    fieldsHolder_->exchangeGhostCells(*meshObject_);
+    
     const auto& internalFaces = meshObject_->getInternalFaces();
     auto& data = fieldsHolder_->getData();
     
     int numCells = meshObject_->getNumCells();
+    bool isParallel = (meshObject_->getMpiSize() > 1);
     
     for (const auto* face : internalFaces) {
         int leftCellID = face->getLeftCell();
@@ -68,6 +79,11 @@ void AssembleInteriorVectorDiffusionToLinSystem::assemble() {
             std::cerr << "Invalid cell IDs in internal face: leftID=" << leftCellID 
                       << " rightID=" << rightCellID << " (numCells=" << numCells << ")" << std::endl;
             throw std::runtime_error("Invalid cell ID in internal face");
+        }
+        
+        // Skip faces not owned by this rank in parallel
+        if (isParallel && !meshObject_->isLocalCell(leftCellID)) {
+            continue;
         }
         
         // Get cell centroids
@@ -91,24 +107,32 @@ void AssembleInteriorVectorDiffusionToLinSystem::assemble() {
         double faceArea = face->getArea();
         double diffusionFactor = diffusionCoeff_ * faceArea / distance;
         
+        // Use global indices for parallel assembly
+        int globalLeftID = isParallel ? leftCellID : leftCellID;
+        int globalRightID = isParallel ? rightCellID : rightCellID;
+        int localLeftID = isParallel ? meshObject_->globalToLocal(leftCellID) : leftCellID;
+        int localRightID = isParallel ? meshObject_->globalToLocal(rightCellID) : rightCellID;
+        
         // Assemble for each component
         for (int comp = 0; comp < MAX_DIM; ++comp) {
-            int rowLeft = leftCellID * MAX_DIM + comp;
-            int rowRight = rightCellID * MAX_DIM + comp;
+            int localRowLeft = localLeftID * MAX_DIM + comp;
+            int localRowRight = localRightID * MAX_DIM + comp;
+            int globalRowLeft = globalLeftID * MAX_DIM + comp;
+            int globalRowRight = globalRightID * MAX_DIM + comp;
             
-            double phiLeft = data[rowLeft];
-            double phiRight = data[rowRight];
+            double phiLeft = (localLeftID >= 0) ? data[localRowLeft] : 0.0;
+            double phiRight = (localRightID >= 0) ? data[localRowRight] : 0.0;
             double flux = diffusionFactor * (phiRight - phiLeft);
             
             // Contribution to left cell
-            linearSystem_->addLhs(rowLeft, rowLeft, -diffusionFactor);
-            linearSystem_->addLhs(rowLeft, rowRight, diffusionFactor);
-            linearSystem_->addRhs(rowLeft, -flux);
+            linearSystem_->addLhs(globalRowLeft, globalRowLeft, -diffusionFactor);
+            linearSystem_->addLhs(globalRowLeft, globalRowRight, diffusionFactor);
+            linearSystem_->addRhs(globalRowLeft, -flux);
             
             // Contribution to right cell
-            linearSystem_->addLhs(rowRight, rowRight, -diffusionFactor);
-            linearSystem_->addLhs(rowRight, rowLeft, diffusionFactor);
-            linearSystem_->addRhs(rowRight, flux);
+            linearSystem_->addLhs(globalRowRight, globalRowRight, -diffusionFactor);
+            linearSystem_->addLhs(globalRowRight, globalRowLeft, diffusionFactor);
+            linearSystem_->addRhs(globalRowRight, flux);
         }
     }
 }
@@ -124,18 +148,21 @@ AssembleCellVectorPressureGradientToLinSystem::AssembleCellVectorPressureGradien
 }
 
 void AssembleCellVectorPressureGradientToLinSystem::assemble() {
-    const auto& cells = meshObject_->getCells();
+    bool isParallel = (meshObject_->getMpiSize() > 1);
+    const auto& cells = isParallel ? meshObject_->getLocalCells() : meshObject_->getCells();
     auto& data = fieldsHolder_->getData();
     int numComponents = fieldsHolder_->getNumComponents();
     
     for (const auto& cell : cells) {
-        int cellID = cell.getFlatId();
+        int localId = isParallel ? cell.getLocalId() : cell.getFlatId();
+        int globalId = isParallel ? meshObject_->localToGlobal(localId) : cell.getFlatId();
         double cellVolume = cell.getVolume();
         
         for (int comp = 0; comp < numComponents; ++comp) {
-            int rowIndex = cellID * numComponents + comp;
-            double value = data[rowIndex] * cellVolume;
-            linearSystem_->addRhs(rowIndex, value);
+            int localIndex = localId * numComponents + comp;
+            int globalIndex = globalId * numComponents + comp;
+            double value = data[localIndex] * cellVolume;
+            linearSystem_->addRhs(globalIndex, value);
         }
     }
 }
@@ -165,10 +192,16 @@ AssembleDirichletBoundaryVectorDiffusionToLinSystem::AssembleDirichletBoundaryVe
 
 void AssembleDirichletBoundaryVectorDiffusionToLinSystem::assemble() {
     auto& data = fieldsHolder_->getData();
+    bool isParallel = (meshObject_->getMpiSize() > 1);
     
     for (auto* face : boundaryFaces_) {
         int cellID = face->getLeftCell();
         if (cellID < 0 || cellID >= meshObject_->getNumCells()) continue;
+        
+        // Skip if not local cell in parallel
+        if (isParallel && !meshObject_->isLocalCell(cellID)) {
+            continue;
+        }
         
         const Cell* cell = meshObject_->getCellByFlatId(cellID);
         if (!cell) continue;
@@ -185,11 +218,15 @@ void AssembleDirichletBoundaryVectorDiffusionToLinSystem::assemble() {
         
         double lhsFactor = (diffusionCoeff_ * faceArea) / normalDistance;
         
+        int localId = isParallel ? meshObject_->globalToLocal(cellID) : cellID;
+        int globalId = isParallel ? cellID : cellID;
+        
         for (int comp = 0; comp < MAX_DIM; ++comp) {
-            int rowIdx = cellID * MAX_DIM + comp;
-            double gradDotArea = (boundaryValue_[comp] - data[rowIdx]) * lhsFactor;
-            linearSystem_->addRhs(rowIdx, -gradDotArea);
-            linearSystem_->addLhs(rowIdx, rowIdx, -lhsFactor);
+            int localIndex = localId * MAX_DIM + comp;
+            int globalRowIdx = globalId * MAX_DIM + comp;
+            double gradDotArea = (boundaryValue_[comp] - data[localIndex]) * lhsFactor;
+            linearSystem_->addRhs(globalRowIdx, -gradDotArea);
+            linearSystem_->addLhs(globalRowIdx, globalRowIdx, -lhsFactor);
         }
     }
 }
@@ -205,8 +242,11 @@ AssembleInteriorVectorAdvectionToLinSystem::AssembleInteriorVectorAdvectionToLin
 }
 
 void AssembleInteriorVectorAdvectionToLinSystem::assemble() {
+    fieldsHolder_->exchangeGhostCells(*meshObject_);
+    
     const auto& internalFaces = meshObject_->getInternalFaces();
     auto& data = fieldsHolder_->getData();
+    bool isParallel = (meshObject_->getMpiSize() > 1);
     
     for (const auto* face : internalFaces) {
         int leftCellID = face->getLeftCell();
@@ -215,24 +255,32 @@ void AssembleInteriorVectorAdvectionToLinSystem::assemble() {
         if (leftCellID < 0 || rightCellID < 0) continue;
         if (leftCellID >= meshObject_->getNumCells() || rightCellID >= meshObject_->getNumCells()) continue;
         
+        // Skip if not owned by this rank
+        if (isParallel && !meshObject_->isLocalCell(leftCellID)) {
+            continue;
+        }
+        
+        int localLeftID = isParallel ? meshObject_->globalToLocal(leftCellID) : leftCellID;
+        int localRightID = isParallel ? meshObject_->globalToLocal(rightCellID) : rightCellID;
+        
         double massFlux = face->getMassFlux();
         double mdot_L = (massFlux + std::abs(massFlux)) / 2.0;  // Upwind for left
         double mdot_R = (massFlux - std::abs(massFlux)) / 2.0;  // Upwind for right
         
         for (int i = 0; i < MAX_DIM; ++i) {
-            double fieldLeft = data[leftCellID * MAX_DIM + i];
-            double fieldRight = data[rightCellID * MAX_DIM + i];
+            double fieldLeft = (localLeftID >= 0) ? data[localLeftID * MAX_DIM + i] : 0.0;
+            double fieldRight = (localRightID >= 0) ? data[localRightID * MAX_DIM + i] : 0.0;
             double rhs = fieldLeft * mdot_L + fieldRight * mdot_R;
             
-            int rowIndexLeft = leftCellID * MAX_DIM + i;
-            int rowIndexRight = rightCellID * MAX_DIM + i;
+            int globalRowLeft = leftCellID * MAX_DIM + i;
+            int globalRowRight = rightCellID * MAX_DIM + i;
             
-            linearSystem_->addRhs(rowIndexLeft, rhs);
-            linearSystem_->addRhs(rowIndexRight, -rhs);
-            linearSystem_->addLhs(rowIndexLeft, rowIndexLeft, -mdot_L);
-            linearSystem_->addLhs(rowIndexLeft, rowIndexRight, -mdot_R);
-            linearSystem_->addLhs(rowIndexRight, rowIndexLeft, mdot_L);
-            linearSystem_->addLhs(rowIndexRight, rowIndexRight, mdot_R);
+            linearSystem_->addRhs(globalRowLeft, rhs);
+            linearSystem_->addRhs(globalRowRight, -rhs);
+            linearSystem_->addLhs(globalRowLeft, globalRowLeft, -mdot_L);
+            linearSystem_->addLhs(globalRowLeft, globalRowRight, -mdot_R);
+            linearSystem_->addLhs(globalRowRight, globalRowLeft, mdot_L);
+            linearSystem_->addLhs(globalRowRight, globalRowRight, mdot_R);
         }
     }
 }
@@ -249,6 +297,7 @@ AssembleInteriorPressurePoissonSystem::AssembleInteriorPressurePoissonSystem(
 
 void AssembleInteriorPressurePoissonSystem::assemble() {
     const auto& internalFaces = meshObject_->getInternalFaces();
+    bool isParallel = (meshObject_->getMpiSize() > 1);
     
     for (const auto* face : internalFaces) {
         int leftCellID = face->getLeftCell();
@@ -256,6 +305,11 @@ void AssembleInteriorPressurePoissonSystem::assemble() {
         
         if (leftCellID < 0 || rightCellID < 0) continue;
         if (leftCellID >= meshObject_->getNumCells() || rightCellID >= meshObject_->getNumCells()) continue;
+        
+        // Skip if not owned by this rank
+        if (isParallel && !meshObject_->isLocalCell(leftCellID)) {
+            continue;
+        }
         
         const Cell* leftCell = meshObject_->getCellByFlatId(leftCellID);
         const Cell* rightCell = meshObject_->getCellByFlatId(rightCellID);
@@ -284,11 +338,18 @@ void AssembleInteriorPressurePoissonSystem::assemble() {
 
 void AssembleInteriorPressurePoissonSystem::assembleRhs() {
     const auto& internalFaces = meshObject_->getInternalFaces();
+    bool isParallel = (meshObject_->getMpiSize() > 1);
     
     for (const auto* face : internalFaces) {
         int leftCellID = face->getLeftCell();
         int rightCellID = face->getRightCell();
         double massFlux = face->getMassFlux();
+
+        if (leftCellID < 0 || rightCellID < 0) continue;
+        if (leftCellID >= meshObject_->getNumCells() || rightCellID >= meshObject_->getNumCells()) continue;
+        if (isParallel && !meshObject_->isLocalCell(leftCellID)) {
+            continue;
+        }
         
         linearSystem_->addRhs(leftCellID, massFlux);
         linearSystem_->addRhs(rightCellID, -massFlux);

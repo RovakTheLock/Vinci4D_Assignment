@@ -99,6 +99,22 @@ foreach(test_name ${TEST_SOURCES})
     add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()
 
+# Parallel test executable (requires MPI)
+add_executable(test_parallel tests/test_parallel.cpp)
+target_link_libraries(test_parallel 
+    vinci4d_lib
+    GTest::gtest
+    MPI::MPI_CXX
+)
+
+# Add parallel tests with different process counts
+find_program(MPIEXEC_EXECUTABLE NAMES mpirun mpiexec)
+if(MPIEXEC_EXECUTABLE)
+    add_test(NAME test_parallel_np1 COMMAND ${MPIEXEC_EXECUTABLE} -np 1 ./test_parallel)
+    add_test(NAME test_parallel_np2 COMMAND ${MPIEXEC_EXECUTABLE} -np 2 ./test_parallel)
+    add_test(NAME test_parallel_np4 COMMAND ${MPIEXEC_EXECUTABLE} -np 4 ./test_parallel)
+endif()
+
 # Copy config file to build directory
 configure_file(${CMAKE_SOURCE_DIR}/config/input.yaml 
                ${CMAKE_BINARY_DIR}/input.yaml COPYONLY)

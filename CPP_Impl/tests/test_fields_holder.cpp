@@ -39,14 +39,35 @@ TEST_F(FieldsHolderTest, InitializeConstant) {
     }
 }
 
-TEST_F(FieldsHolderTest, IncrementField) {
-    FieldArray field("test", DimType::SCALAR, 10);
-    field.initializeConstant(1.0);
-    field.increment(2.0, 1.5);  // Add 2.0 * 1.5 = 3.0
+TEST_F(FieldsHolderTest, IncrementScalarField) {
+    FieldArray field1("base", DimType::SCALAR, 10);
+    FieldArray field2("increment", DimType::SCALAR, 10);
     
-    const auto& data = field.getData();
+    field1.initializeConstant(5.0);
+    field2.initializeConstant(2.0);
+    
+    // Increment field1 by field2 * 1.5 (so 5.0 + 2.0 * 1.5 = 8.0)
+    field1.increment(field2, 1.5);
+    
+    const auto& data = field1.getData();
     for (const auto& val : data) {
-        EXPECT_DOUBLE_EQ(val, 4.0);
+        EXPECT_DOUBLE_EQ(val, 8.0);
+    }
+}
+
+TEST_F(FieldsHolderTest, IncrementVectorField) {
+    FieldArray field1("base", DimType::VECTOR, 5);
+    FieldArray field2("increment", DimType::VECTOR, 5);
+    
+    field1.initializeConstant(3.0);  // All components = 3.0
+    field2.initializeConstant(4.0);  // All components = 4.0
+    
+    // Increment field1 by field2 * 2.0 (so 3.0 + 4.0 * 2.0 = 11.0)
+    field1.increment(field2, 2.0);
+    
+    const auto& data = field1.getData();
+    for (const auto& val : data) {
+        EXPECT_DOUBLE_EQ(val, 11.0);
     }
 }
 
@@ -83,6 +104,20 @@ TEST_F(FieldsHolderTest, SwapFields) {
     for (const auto& val : data2) {
         EXPECT_DOUBLE_EQ(val, 1.0);
     }
+}
+
+TEST_F(FieldsHolderTest, IncrementIncompatibleTypeThrows) {
+    FieldArray scalarField("scalar", DimType::SCALAR, 10);
+    FieldArray vectorField("vector", DimType::VECTOR, 10);
+    
+    EXPECT_THROW(scalarField.increment(vectorField), std::runtime_error);
+}
+
+TEST_F(FieldsHolderTest, IncrementIncompatibleSizeThrows) {
+    FieldArray field1("test1", DimType::SCALAR, 10);
+    FieldArray field2("test2", DimType::SCALAR, 20);
+    
+    EXPECT_THROW(field1.increment(field2), std::runtime_error);
 }
 
 TEST_F(FieldsHolderTest, CopyToIncompatibleTypeThrows) {

@@ -31,6 +31,9 @@ std::string fieldNameToString(FieldNames name);
 
 /**
  * @brief Field array that stores scalar or vector field data
+ * 
+ * Supports ghost cells for MPI parallel execution.
+ * Data layout: [local cells...][ghost cells...]
  */
 class FieldArray {
 public:
@@ -39,14 +42,17 @@ public:
      * 
      * @param name Name of the field
      * @param fieldType Type of the field (SCALAR or VECTOR)
-     * @param numPoints Number of points (cells or faces)
+     * @param numLocalPoints Number of local points (cells or faces) owned by this rank
+     * @param numGhostPoints Number of ghost points (default 0 for sequential)
      */
-    FieldArray(const std::string& name, DimType fieldType, int numPoints);
+    FieldArray(const std::string& name, DimType fieldType, int numLocalPoints, int numGhostPoints = 0);
     
     // Getters
     std::string getName() const { return name_; }
     DimType getType() const { return fieldType_; }
     int getNumComponents() const { return numComponents_; }
+    int getNumLocalPoints() const { return numLocalPoints_; }
+    int getNumGhostPoints() const { return numGhostPoints_; }
     std::vector<double>& getData() { return data_; }
     const std::vector<double>& getData() const { return data_; }
     
@@ -56,9 +62,12 @@ public:
     void initializeConstant(double value);
     
     /**
-     * @brief Increment the field by a scaled value
+     * @brief Increment the field by another field array scaled by a factor
+     * 
+     * @param other The FieldArray to add to this field
+     * @param scale Scaling factor to apply to the other field (default 1.0)
      */
-    void increment(double value, double scale = 1.0);
+    void increment(const FieldArray& other, double scale = 1.0);
     
     /**
      * @brief Copy data to another FieldArray
@@ -69,11 +78,20 @@ public:
      * @brief Swap data arrays with another FieldArray
      */
     void swapFields(FieldArray& other);
+    
+    /**
+     * @brief Exchange ghost cell data with neighbor ranks
+     * 
+     * @param mesh MeshObject containing communication patterns
+     */
+    void exchangeGhostCells(const class MeshObject& mesh);
 
 private:
     std::string name_;
     DimType fieldType_;
     int numComponents_;
+    int numLocalPoints_;
+    int numGhostPoints_;
     std::vector<double> data_;
 };
 
