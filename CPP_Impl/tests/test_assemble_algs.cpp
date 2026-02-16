@@ -6,6 +6,7 @@
 #include "../include/YamlParser.h"
 #include "../include/FieldsHolder.h"
 #include "../include/LinearSystem.h"
+#include "../include/Operations.h"
 
 using namespace Vinci4D;
 
@@ -213,6 +214,107 @@ simulation:
     
     VecRestoreArrayRead(solution, &solutionData);
     VecDestroy(&solution);
+}
+
+TEST_F(AssembleAlgorithmsTest, VectorAdvectionConsistency) {
+    // Test that LHS * velocity = -RHS for advection operator (conservation check)
+    // This verifies the advection operator is consistent and conservative
+    const char* yaml_content = R"(
+mesh_parameters:
+  x_range: [0.0, 1.0]
+  y_range: [0.0, 1.0]
+  num_cells_x: 3
+  num_cells_y: 3
+simulation:
+  Re: 100
+  CFL: 0.5
+)";
+    
+    // Write temporary config
+    std::ofstream tmpYaml("/tmp/advection_test.yaml");
+    tmpYaml << yaml_content;
+    tmpYaml.close();
+    
+    InputConfigParser testParser("/tmp/advection_test.yaml");
+    MeshObject testMesh(testParser);
+    int testNumCells = testMesh.getNumCells();
+    int testDof = testNumCells * MAX_DIM;
+    
+    // Create velocity field with [1.0, 1.0] everywhere
+    FieldArray velocityField("velocity", DimType::VECTOR, testNumCells);
+    velocityField.initializeConstant(0.0);
+    auto& velData = velocityField.getData();
+    for (int i = 0; i < testNumCells; ++i) {
+        velData[i * MAX_DIM] = 1.0;      // u = 1.0
+        velData[i * MAX_DIM + 1] = 1.0;  // v = 1.0
+    }
+    
+    // Create pressure field (zero everywhere)
+    FieldArray pressureField("pressure", DimType::SCALAR, testNumCells);
+    pressureField.initializeConstant(0.0);
+    
+    // Compute pressure gradient (will be zero)
+    FieldArray gradPressureField("grad_pressure", DimType::VECTOR, testNumCells);
+    gradPressureField.initializeConstant(0.0);
+    ComputeCellGradient gradientOp(&testMesh, &pressureField, &gradPressureField);
+    gradientOp.computeScalarGradient();
+    
+    // Compute mass flux
+    double dt = 0.01;
+    ComputeInteriorMassFlux massFluxOp(&testMesh, &velocityField, &pressureField, 
+                                        &gradPressureField, dt);
+    massFluxOp.computeMassFlux();
+    
+    // Assemble advection operator
+    LinearSystem system(testDof, "AdvectionTest", false);  // Dense matrix for easy multiplication
+    AssembleInteriorVectorAdvectionToLinSystem advectionAlg(
+        "VelocityAdvection", &velocityField, &system, &testMesh);
+    
+    system.zero();
+    advectionAlg.assemble();
+    system.assembleMatrix();
+    
+    // Check conservation: LHS * velocity = -RHS
+    // Multiply LHS matrix by velocity vector
+    Mat lhs = system.getLhs();
+    Vec rhs = system.getRhs();
+    Vec lhsTimesVel;
+    VecCreate(PETSC_COMM_WORLD, &lhsTimesVel);
+    VecSetSizes(lhsTimesVel, PETSC_DECIDE, testDof);
+    VecSetFromOptions(lhsTimesVel);
+    
+    // Create velocity PETSc vector
+    Vec velVec;
+    VecCreate(PETSC_COMM_WORLD, &velVec);
+    VecSetSizes(velVec, PETSC_DECIDE, testDof);
+    VecSetFromOptions(velVec);
+    
+    // Copy velocity data to PETSc vector
+    for (int i = 0; i < testDof; ++i) {
+        VecSetValue(velVec, i, velData[i], INSERT_VALUES);
+    }
+    VecAssemblyBegin(velVec);
+    VecAssemblyEnd(velVec);
+    
+    // Compute LHS * velocity
+    MatMult(lhs, velVec, lhsTimesVel);
+    
+    // Verify that LHS * velocity = -RHS
+    const PetscScalar* lhsVelData;
+    const PetscScalar* rhsData;
+    VecGetArrayRead(lhsTimesVel, &lhsVelData);
+    VecGetArrayRead(rhs, &rhsData);
+    
+    for (int i = 0; i < testDof; ++i) {
+        EXPECT_NEAR(-lhsVelData[i], rhsData[i], 1e-5)
+            << "Conservation check failed at DOF " << i 
+            << ": LHS*vel=" << lhsVelData[i] << ", RHS=" << rhsData[i];
+    }
+    
+    VecRestoreArrayRead(lhsTimesVel, &lhsVelData);
+    VecRestoreArrayRead(rhs, &rhsData);
+    VecDestroy(&lhsTimesVel);
+    VecDestroy(&velVec);
 }
 
 int main(int argc, char** argv) {
