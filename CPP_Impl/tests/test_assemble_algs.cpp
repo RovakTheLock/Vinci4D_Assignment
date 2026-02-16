@@ -1,5 +1,6 @@
 #include <petsc.h>
 #include <gtest/gtest.h>
+#include <fstream>
 #include "../include/AssembleAlgorithms.h"
 #include "../include/MeshObject.h"
 #include "../include/YamlParser.h"
@@ -127,6 +128,91 @@ TEST_F(AssembleAlgorithmsTest, WrongFieldTypeThrows) {
         AssembleCellVectorTimeTerm timeAssembler(
             "TimeTerm", &scalarField, &scalarField, &momentumSystem, mesh, 0.01);
     }, std::runtime_error);
+}
+
+TEST_F(AssembleAlgorithmsTest, VectorDiffusionLinearProfileHorizontal) {
+    // Create 3x3 mesh for diffusion verification
+    const char* yaml_content = R"(
+mesh_parameters:
+  x_range: [0.0, 1.0]
+  y_range: [0.0, 1.0]
+  num_cells_x: 3
+  num_cells_y: 3
+simulation:
+  Re: 100
+  CFL: 0.5
+)";
+    
+    // Write temporary config
+    std::ofstream tmpYaml("/tmp/diffusion_test.yaml");
+    tmpYaml << yaml_content;
+    tmpYaml.close();
+    
+    InputConfigParser testParser("/tmp/diffusion_test.yaml");
+    MeshObject testMesh(testParser);
+    int testNumCells = testMesh.getNumCells();
+    int testDof = testNumCells * MAX_DIM;
+    
+    // Boundary values: left=[10.0, 0.0], right=[1.0, 0.0]
+    std::array<double, 2> leftValue = {10.0, 0.0};
+    std::array<double, 2> rightValue = {1.0, 0.0};
+    
+    FieldArray velocityField("velocity", DimType::VECTOR, testNumCells);
+    velocityField.initializeConstant(0.0);
+    
+    LinearSystem system(testDof, "VectorDiffusion", true);  // Use sparse matrix
+    
+    double diffusionCoeff = 1.0;
+    
+    // Assemble interior diffusion
+    AssembleInteriorVectorDiffusionToLinSystem interiorDiffusion(
+        "InteriorDiffusion", &velocityField, &system, &testMesh, diffusionCoeff);
+    
+    // Assemble left boundary
+    AssembleDirichletBoundaryVectorDiffusionToLinSystem leftBoundary(
+        "LeftBoundary", &velocityField, &system, &testMesh, 
+        Boundary::LEFT, leftValue, diffusionCoeff);
+    
+    // Assemble right boundary
+    AssembleDirichletBoundaryVectorDiffusionToLinSystem rightBoundary(
+        "RightBoundary", &velocityField, &system, &testMesh, 
+        Boundary::RIGHT, rightValue, diffusionCoeff);
+    
+    // Zero and assemble all (matching Python pattern)
+    system.zero();
+    interiorDiffusion.assemble();
+    leftBoundary.assemble();
+    rightBoundary.assemble();
+    system.assembleMatrix();
+    
+    // Solve system
+    Vec solution;
+    VecCreate(PETSC_COMM_WORLD, &solution);
+    VecSetSizes(solution, PETSC_DECIDE, testDof);
+    VecSetFromOptions(solution);
+    system.solve("direct", solution);
+    
+    // Verify linear profile: dU = x * slope + leftValue
+    const PetscScalar* solutionData;
+    VecGetArrayRead(solution, &solutionData);
+    
+    for (const auto& cell : testMesh.getCells()) {
+        int cellID = cell.getFlatId();
+        auto centroid = cell.getCentroid();
+        double x = centroid[0];
+        
+        for (int comp = 0; comp < MAX_DIM; ++comp) {
+            double slope = (rightValue[comp] - leftValue[comp]) / 1.0;
+            double expectedValue = x * slope + leftValue[comp];
+            EXPECT_NEAR(solutionData[cellID * MAX_DIM + comp], expectedValue, 1e-5)
+                << "Linear profile mismatch at cell " << cellID 
+                << " component " << comp 
+                << " at x=" << x;
+        }
+    }
+    
+    VecRestoreArrayRead(solution, &solutionData);
+    VecDestroy(&solution);
 }
 
 int main(int argc, char** argv) {

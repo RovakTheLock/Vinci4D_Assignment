@@ -367,6 +367,7 @@ TEST_F(PseudoSimulationTest, CoupledSolverLoop) {
         velocityNp1->copyTo(*velocityN);
         
     }
+    timer.report_timing_statistics();
     
     EXPECT_TRUE(true) << "Coupled solver loop completed successfully";
 }
