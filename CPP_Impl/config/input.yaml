@@ -1,0 +1,48 @@
+# Vinci4D CFD Solver Configuration File
+# =====================================
+# This YAML file configures the mesh, simulation parameters, and solver settings
+# for the Vinci4D finite volume CFD solver.
+#
+# Mesh Configuration:
+#   - Define domain geometry and discretization
+#   - Controls grid resolution (total cells = num_cells_x * num_cells_y)
+#
+# Simulation Configuration:
+#   - Physics parameters (Reynolds number, CFL)
+#   - Time stepping and convergence criteria
+#   - Output settings and tolerances
+#
+# Notes:
+#   - Time step is automatically computed from CFL number
+#   - Smaller CFL -> smaller time step -> more stable but slower
+#   - Output directory will be created if it doesn't exist
+#   - Convergence tolerances are checked during nonlinear iterations
+
+mesh_parameters:
+  x_range: [0, 1]
+  y_range: [0, 1]
+  num_cells_x: 250
+  num_cells_y: 250
+
+simulation:
+  # Reynolds number (Re = rho * U * L / mu)
+  # Higher Re -> more convection-dominated, less diffusion
+  Re: 10000
+  
+  # Courant-Friedrichs-Lewy number (0 < CFL < 1 for stability)
+  # dt = CFL * min(dx, dy) / max_velocity
+  CFL: 0.8
+  
+  # Total simulation time to run (seconds)
+  termination_time: 0.004
+  
+  # Nonlinear iterations per time step (momentum-pressure coupling)
+  num_nonlinear_iterations: 5
+  
+  # Output frequency and directory
+  output_frequency: 50              # Save results every N time steps
+  output_directory: ./testing_output  # Directory to save VTK/data files
+  
+  # Convergence tolerances for nonlinear iterations
+  continuity_tolerance: 1.0e-5       # Pressure equation (mass conservation)
+  momentum_tolerance: 1.0e-5         # Momentum equation
