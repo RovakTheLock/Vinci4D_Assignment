@@ -187,10 +187,9 @@ void AssembleDirichletBoundaryVectorDiffusionToLinSystem::assemble() {
         
         for (int comp = 0; comp < MAX_DIM; ++comp) {
             int rowIdx = cellID * MAX_DIM + comp;
-            // Dirichlet BC: flux = -D * (phi_BC - phi_cell) / d * Area
-            // Contribution to linear system: +lhsFactor * phi = +lhsFactor * BC
-            linearSystem_->addRhs(rowIdx, lhsFactor * boundaryValue_[comp]);
-            linearSystem_->addLhs(rowIdx, rowIdx, lhsFactor);
+            double gradDotArea = (boundaryValue_[comp] - data[rowIdx]) * lhsFactor;
+            linearSystem_->addRhs(rowIdx, -gradDotArea);
+            linearSystem_->addLhs(rowIdx, rowIdx, -lhsFactor);
         }
     }
 }
