@@ -31,9 +31,18 @@ private:
 
     void ensureOutputDirectory() const;
     std::string buildFileName(int step) const;
+    std::string buildPieceFileName(int step, int rank) const;
+    std::string buildMasterFileName(int step) const;
+    std::string buildPvdFileName() const;
     void writeHeader(std::ofstream& out, const MeshObject& mesh) const;
     void writeCellData(std::ofstream& out, const MeshObject& mesh,
                        const std::vector<FieldArray*>& fields) const;
+    void writeVtsPiece(int step, double time, const MeshObject& mesh,
+                       const std::vector<FieldArray*>& fields) const;
+    void writePvts(int step, double time, const MeshObject& mesh,
+                   const std::vector<FieldArray*>& fields,
+                   const std::vector<int>& extents) const;
+    void writePvdEntry(int step, double time, bool isParallel) const;
 };
 
 } // namespace Vinci4D

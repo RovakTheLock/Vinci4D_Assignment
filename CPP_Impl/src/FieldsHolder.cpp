@@ -1,4 +1,5 @@
 #include "FieldsHolder.h"
+#include "MeshObject.h"
 #include <stdexcept>
 #include <algorithm>
 
@@ -18,20 +19,29 @@ std::string fieldNameToString(FieldNames name) {
     }
 }
 
-FieldArray::FieldArray(const std::string& name, DimType fieldType, int numPoints)
+FieldArray::FieldArray(const std::string& name, DimType fieldType, int numLocalPoints, int numGhostPoints)
     : name_(name),
       fieldType_(fieldType),
-      numComponents_(fieldType == DimType::SCALAR ? 1 : MAX_DIM) {
-    data_.resize(numPoints * numComponents_, 0.0);
+      numComponents_(fieldType == DimType::SCALAR ? 1 : MAX_DIM),
+      numLocalPoints_(numLocalPoints),
+      numGhostPoints_(numGhostPoints) {
+    int totalPoints = numLocalPoints + numGhostPoints;
+    data_.resize(totalPoints * numComponents_, 0.0);
 }
 
 void FieldArray::initializeConstant(double value) {
     std::fill(data_.begin(), data_.end(), value);
 }
 
-void FieldArray::increment(double value, double scale) {
-    for (auto& val : data_) {
-        val += value * scale;
+void FieldArray::increment(const FieldArray& other, double scale) {
+    if (fieldType_ != other.fieldType_) {
+        throw std::runtime_error("Can only increment fields of the same type");
+    }
+    if (data_.size() != other.data_.size()) {
+        throw std::runtime_error("Can only increment fields with the same shape");
+    }
+    for (size_t i = 0; i < data_.size(); ++i) {
+        data_[i] += other.data_[i] * scale;
     }
 }
 
@@ -53,6 +63,10 @@ void FieldArray::swapFields(FieldArray& other) {
         throw std::runtime_error("Can only swap fields with the same shape");
     }
     data_.swap(other.data_);
+}
+
+void FieldArray::exchangeGhostCells(const MeshObject& mesh) {
+    mesh.exchangeGhostCells(*this);
 }
 
 } // namespace Vinci4D

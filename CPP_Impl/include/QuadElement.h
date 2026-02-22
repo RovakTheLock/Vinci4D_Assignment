@@ -56,6 +56,7 @@ private:
  * @brief Represents a cell in a finite volume mesh
  * 
  * Stores a flattened array ID and the cell volume with optional (i,j) indices.
+ * For parallel execution, also stores a local ID within rank's subdomain.
  */
 class Cell {
 public:
@@ -73,15 +74,18 @@ public:
     
     // Getters
     int getFlatId() const { return flatId_; }
+    int getLocalId() const { return localId_; }
     double getVolume() const { return volume_; }
     std::array<int, 2> getIndices() const { return indices_; }
     std::array<double, 2> getCentroid() const { return centroid_; }
     
     // Setters
     void setCentroid(const std::array<double, 2>& centroid) { centroid_ = centroid; }
+    void setLocalId(int localId) { localId_ = localId; }
 
 private:
     int flatId_;
+    int localId_;  // Local ID within rank (for MPI)
     double volume_;
     std::array<int, 2> indices_;
     std::array<double, 2> centroid_;

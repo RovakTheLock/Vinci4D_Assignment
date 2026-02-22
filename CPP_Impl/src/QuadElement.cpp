@@ -15,6 +15,7 @@ Face::Face(int faceId, int leftCellIdx, int rightCellIdx,
 
 Cell::Cell(int flatId, double volume, std::array<int, 2> indices, std::array<double, 2> centroid)
     : flatId_(flatId),
+      localId_(-1),
       volume_(volume),
       indices_(indices),
       centroid_(centroid) {}

@@ -24,16 +24,26 @@ protected:
         double Re = 10000.0;  // Reynolds number
         diffusionCoeff = 1.0 / Re;
         
-        // Field initialization
-        int numCells = mesh->getNumCells();
-        int momentumDof = numCells * MAX_DIM;
+        // Field initialization (local + ghost in parallel, global for system DOFs)
+        mpiSize = mesh->getMpiSize();
+        if (mpiSize > 1) {
+            numLocalCells = mesh->getNumLocalCells();
+            numGhostCells = mesh->getNumGhostCells();
+            globalCells = mesh->getGlobalNumCells();
+        } else {
+            numLocalCells = mesh->getNumCells();
+            numGhostCells = 0;
+            globalCells = numLocalCells;
+        }
+        momentumDof = globalCells * MAX_DIM;
+        pressureDof = globalCells;
         
-        velocityNp1 = new FieldArray("velocity_np1", DimType::VECTOR, numCells);
-        velocityN = new FieldArray("velocity_n", DimType::VECTOR, numCells);
-        pressureField = new FieldArray("pressure", DimType::SCALAR, numCells);
-        gradPressureField = new FieldArray("grad_pressure", DimType::VECTOR, numCells);
-        dPressure = new FieldArray("dPressure", DimType::SCALAR, numCells);
-        grad_dPressure = new FieldArray("grad_dPressure", DimType::VECTOR, numCells);
+        velocityNp1 = new FieldArray("velocity_np1", DimType::VECTOR, numLocalCells, numGhostCells);
+        velocityN = new FieldArray("velocity_n", DimType::VECTOR, numLocalCells, numGhostCells);
+        pressureField = new FieldArray("pressure", DimType::SCALAR, numLocalCells, numGhostCells);
+        gradPressureField = new FieldArray("grad_pressure", DimType::VECTOR, numLocalCells, numGhostCells);
+        dPressure = new FieldArray("dPressure", DimType::SCALAR, numLocalCells, numGhostCells);
+        grad_dPressure = new FieldArray("grad_dPressure", DimType::VECTOR, numLocalCells, numGhostCells);
         
         velocityNp1->initializeConstant(0.0);
         velocityN->initializeConstant(0.0);
@@ -43,8 +53,10 @@ protected:
         grad_dPressure->initializeConstant(0.0);
         
         // Create linear systems
-        momentumSystem = new LinearSystem(momentumDof, "momentum", true);
-        pressureSystem = new LinearSystem(numCells, "pressure", true);
+        int localMomentumDof = numLocalCells * MAX_DIM;
+        int localPressureDof = numLocalCells;
+        momentumSystem = new LinearSystem(momentumDof, "momentum", true, localMomentumDof);
+        pressureSystem = new LinearSystem(pressureDof, "pressure", true, localPressureDof);
         
         // Compute time step
         CFLTimeStepCompute cflCompute(mesh, 0.5);
@@ -66,6 +78,12 @@ protected:
     
     InputConfigParser* parser;
     MeshObject* mesh;
+    int mpiSize;
+    int numLocalCells;
+    int numGhostCells;
+    int globalCells;
+    int momentumDof;
+    int pressureDof;
     FieldArray* velocityNp1;
     FieldArray* velocityN;
     FieldArray* pressureField;
@@ -130,8 +148,11 @@ TEST_F(PseudoSimulationTest, GradientComputation) {
     
     auto& gradData = gradPressureField->getData();
     double sumGrad = 0.0;
-    for (double g : gradData) {
-        sumGrad += std::abs(g);
+    const auto& cellsToCheck = (mpiSize > 1) ? mesh->getLocalInteriorCells() : mesh->getInteriorCells();
+    for (const auto* cell : cellsToCheck) {
+        int localId = (mpiSize > 1) ? cell->getLocalId() : cell->getFlatId();
+        sumGrad += std::abs(gradData[localId * MAX_DIM + 0]);
+        sumGrad += std::abs(gradData[localId * MAX_DIM + 1]);
     }
     EXPECT_LT(sumGrad, 1e-8) << "Gradient of constant field should be near zero";
 }
@@ -195,7 +216,6 @@ TEST_F(PseudoSimulationTest, SingleCoupledIteration) {
  * @test Multi-step coupled momentum-pressure solver
  */
 TEST_F(PseudoSimulationTest, CoupledSolverLoop) {
-    int numCells = mesh->getNumCells();
     double terminationTime = parser->getTerminationTime();
     int numTimeSteps = static_cast<int>(std::ceil(terminationTime / dt));
     if (numTimeSteps < 1) {
@@ -246,21 +266,27 @@ TEST_F(PseudoSimulationTest, CoupledSolverLoop) {
     LogObject logger(systems);
     PerformanceTimer timer;
     VtkOutput vtkWriter(parser->getOutputDirectory(), parser->getOutputFrequency());
-    std::cout << "Time step used is: " << dt << " seconds" << std::endl;
-    std::cout << "Number of time steps: " << numTimeSteps << std::endl;
-    std::cout << "Nonlinear iterations per step: " << numNonlinearIters << std::endl;
-    std::cout << "Momentum tolerance: " << momentumTol << std::endl;
-    std::cout << "Continuity tolerance: " << continuityTol << std::endl;
+    bool isRoot = (mesh->getMpiRank() == 0);
+    if (isRoot) {
+        std::cout << "Time step used is: " << dt << " seconds" << std::endl;
+        std::cout << "Number of time steps: " << numTimeSteps << std::endl;
+        std::cout << "Nonlinear iterations per step: " << numNonlinearIters << std::endl;
+        std::cout << "Momentum tolerance: " << momentumTol << std::endl;
+        std::cout << "Continuity tolerance: " << continuityTol << std::endl;
+    }
     
     for (int t = 0; t < numTimeSteps; ++t) {
-        std::cout << "\nTime step " << t + 1 << "/" << numTimeSteps << " Current time = " << t * dt << std::endl;
-        std::cout << "===============================================================================================" << std::endl;
+        if (isRoot) {
+            std::cout << "\nTime step " << t + 1 << "/" << numTimeSteps << " Current time = " << t * dt << std::endl;
+            std::cout << "===============================================================================================" << std::endl;
+        }
         for (int iter = 0; iter < numNonlinearIters; ++iter) {
             // Momentum assembly
             timer.startTimer("MomentumAssembly");
-            for (auto* alg : momentumAlgorithms) {
-                alg->zero();
-            }
+            pressureField->exchangeGhostCells(*mesh);
+            velocityNp1->exchangeGhostCells(*mesh);
+            velocityN->exchangeGhostCells(*mesh);
+            momentumSystem->zero();
             for (auto* alg : momentumAlgorithms) {
                 alg->assemble();
             }
@@ -275,19 +301,32 @@ TEST_F(PseudoSimulationTest, CoupledSolverLoop) {
             VecSetSizes(momentumSolution, PETSC_DECIDE, momentumSystem->getNumDof());
             VecSetFromOptions(momentumSolution);
             timer.startTimer("MomentumSolve");
-            momentumSystem->solve("gmres", momentumSolution, 1e-6, 1e-10, 1000);  // Looser tolerances for nonlinear iterations
+            momentumSystem->solve("gmres", momentumSolution, 1e-6, 1e-10, 1000);
             timer.endTimer();
             
             // Increment velocity with correction (not replace!)
+            const PetscScalar* momentumData = nullptr;
+            VecGetArrayRead(momentumSolution, &momentumData);
+            PetscInt momStart, momEnd;
+            VecGetOwnershipRange(momentumSolution, &momStart, &momEnd);
             auto& velData = velocityNp1->getData();
-            const PetscScalar* momentumVec;
-            VecGetArrayRead(momentumSolution, &momentumVec);
-            for (int i = 0; i < momentumSystem->getNumDof(); ++i) {
-                velData[i] += alphaV * momentumVec[i];  // Increment, not replace
+            const auto& velCells = (mpiSize > 1) ? mesh->getLocalCells() : mesh->getCells();
+            for (const auto& cell : velCells) {
+                int localId = (mpiSize > 1) ? cell.getLocalId() : cell.getFlatId();
+                int globalId = (mpiSize > 1) ? mesh->localToGlobal(localId) : cell.getFlatId();
+                for (int comp = 0; comp < MAX_DIM; ++comp) {
+                    int globalDof = globalId * MAX_DIM + comp;
+                    if (globalDof >= momStart && globalDof < momEnd) {
+                        int localDofIdx = globalDof - momStart;
+                        velData[localId * MAX_DIM + comp] += alphaV * momentumData[localDofIdx];
+                    }
+                }
             }
-            VecRestoreArrayRead(momentumSolution, &momentumVec);
+            VecRestoreArrayRead(momentumSolution, &momentumData);
             VecDestroy(&momentumSolution);
-            
+
+            velocityNp1->exchangeGhostCells(*mesh);
+            pressureField->exchangeGhostCells(*mesh);
             massFluxOp.computeMassFlux();
             
             // Pressure assembly (full matrix on first iteration, RHS-only on subsequent)
@@ -307,7 +346,6 @@ TEST_F(PseudoSimulationTest, CoupledSolverLoop) {
             }
             timer.endTimer();
             
-            double pressureRhsNorm = pressureSystem->getRhsNorm();
             
             // Solve pressure system for pressure corrections
             Vec pressureSolution;
@@ -316,41 +354,60 @@ TEST_F(PseudoSimulationTest, CoupledSolverLoop) {
             VecSetFromOptions(pressureSolution);
             timer.startTimer("ContinuitySolve");
             pressureSystem->solvePressure(pressureSolution, 1e-7);  // Loose tolerance for intermediate iterations
+            double pressureRhsNorm = pressureSystem->getRhsNorm();
             timer.endTimer();
             
             // Store solution as pressure correction in dPressure field
+            const PetscScalar* pressureData = nullptr;
+            VecGetArrayRead(pressureSolution, &pressureData);
+            PetscInt presStart, presEnd;
+            VecGetOwnershipRange(pressureSolution, &presStart, &presEnd);
             auto& dPresData = dPressure->getData();
-            const PetscScalar* pressureVec;
-            VecGetArrayRead(pressureSolution, &pressureVec);
-            for (int i = 0; i < pressureSystem->getNumDof(); ++i) {
-                dPresData[i] = pressureVec[i];
+            const auto& presCells = (mpiSize > 1) ? mesh->getLocalCells() : mesh->getCells();
+            for (const auto& cell : presCells) {
+                int localId = (mpiSize > 1) ? cell.getLocalId() : cell.getFlatId();
+                int globalId = (mpiSize > 1) ? mesh->localToGlobal(localId) : cell.getFlatId();
+                if (globalId >= presStart && globalId < presEnd) {
+                    int localDofIdx = globalId - presStart;
+                    dPresData[localId] = pressureData[localDofIdx];
+                }
             }
-            VecRestoreArrayRead(pressureSolution, &pressureVec);
+            VecRestoreArrayRead(pressureSolution, &pressureData);
             VecDestroy(&pressureSolution);
             
             // Increment accumulated pressure with correction
             auto& pData = pressureField->getData();
-            for (int i = 0; i < numCells; ++i) {
-                pData[i] += alphaP * dPresData[i];
+            const auto& pCells = (mpiSize > 1) ? mesh->getLocalCells() : mesh->getCells();
+            for (const auto& cell : pCells) {
+                int localId = (mpiSize > 1) ? cell.getLocalId() : cell.getFlatId();
+                pData[localId] += alphaP * dPresData[localId];
             }
             
             // Compute gradients of pressure and pressure correction
             dPressureGradOp.computeScalarGradient();
             pressureGradOp.computeScalarGradient();
-            
+            gradPressureField->exchangeGhostCells(*mesh);
+            grad_dPressure->exchangeGhostCells(*mesh);
             // Correct velocity with pressure correction gradient
             auto& velData2 = velocityNp1->getData();
             auto& gradDPresData = grad_dPressure->getData();
-            for (int i = 0; i < numCells * MAX_DIM; ++i) {
-                velData2[i] -= alphaV * dt * gradDPresData[i];
+            const auto& velCells2 = (mpiSize > 1) ? mesh->getLocalCells() : mesh->getCells();
+            for (const auto& cell : velCells2) {
+                int localId = (mpiSize > 1) ? cell.getLocalId() : cell.getFlatId();
+                for (int comp = 0; comp < MAX_DIM; ++comp) {
+                    int localIndex = localId * MAX_DIM + comp;
+                    velData2[localIndex] -= alphaV * dt * gradDPresData[localIndex];
+                }
             }
-            
+            velocityNp1->exchangeGhostCells(*mesh);
             massFluxOp.computeMassFlux();
             
             // Check for residual growth (avoiding NaN propagation)
             if (momentumRhsNorm > 1e3 || pressureRhsNorm > 1e3) {
-                std::cerr << "Residual growth detected: momentum=" << momentumRhsNorm 
-                          << ", pressure=" << pressureRhsNorm << std::endl;
+                if (isRoot) {
+                    std::cerr << "Residual growth detected: momentum=" << momentumRhsNorm 
+                              << ", pressure=" << pressureRhsNorm << std::endl;
+                }
                 break;  // Exit nonlinear iteration loop
             }
             logger.reportLog(iter);
@@ -358,7 +415,9 @@ TEST_F(PseudoSimulationTest, CoupledSolverLoop) {
                 break;
             }
         }
-        std::cout << "===============================================================================================" << std::endl;
+        if (isRoot) {
+            std::cout << "===============================================================================================" << std::endl;
+        }
         if (vtkWriter.shouldWrite(t)) {
             std::vector<FieldArray*> fields = {pressureField, velocityNp1};
             vtkWriter.write(t, t * dt, *mesh, fields);
@@ -387,6 +446,13 @@ int main(int argc, char** argv) {
     // PetscOptionsSetValue(nullptr, "-pc_factor_levels", "3");
     
     ::testing::InitGoogleTest(&argc, argv);
+    int mpiRank = 0;
+    MPI_Comm_rank(MPI_COMM_WORLD, &mpiRank);
+    if (mpiRank != 0) {
+        auto& listeners = ::testing::UnitTest::GetInstance()->listeners();
+        delete listeners.Release(listeners.default_result_printer());
+        delete listeners.Release(listeners.default_xml_generator());
+    }
     int result = RUN_ALL_TESTS();
     PetscFinalize();
     return result;

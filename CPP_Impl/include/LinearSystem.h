@@ -22,7 +22,7 @@ public:
      * @param name Name of the linear system
      * @param sparse Use sparse matrix format (always true for PETSc)
      */
-    LinearSystem(int numDof, const std::string& name, bool sparse = true);
+    LinearSystem(int numDof, const std::string& name, bool sparse = true, int localDof = PETSC_DECIDE);
     
     /**
      * @brief Destructor - cleans up PETSc objects
@@ -95,6 +95,7 @@ public:
 
 private:
     int numDof_;
+    int localDof_;
     std::string name_;
     Mat lhs_;          // PETSc sparse matrix
     Vec rhs_;          // PETSc RHS vector
